@@ -1,12 +1,27 @@
+# Customized Version of table-template 
+This repository is a fork of table-template work done by Toomasv. The original project can be found at (https://github.com/toomasv/table-template). 
+
+The initial modifications allow the template to work with Red Verion 0.6.6 
+
+
+**Changes include:**- 
+- Update map and construction syntax in program and in the documentation below
+- Move all template fields from the actors block into the template block
+- Move field actors/data to newly created 'table-data field
+- Create usable-grid field to support more precise scrolling at the end of the sheet. 
+- Cleanup of various old comments. 
+
+This version of table-template should work almost exactly as the original did.(Take into account that 'table-data is in ) All of the original documentation is below, with some minor changes to reflect this version.
+
+
 # table-template
 Template for table style
 
 To enable table style:
 ```
-tbl: #include %table-template.red
-style 'table tbl
+#include %table-template.red
 ```
-After that table style can be used in layout, as e.g.
+After that the table style can be used in layout, as e.g.
 ```
 view [table]
 ```
@@ -14,13 +29,13 @@ This will create an empty table with default size of 317x217 and grid 3x8. Defau
 
 Specifying size for table will fill the extra space with additional cells.
 ```
-view [table 717x517]]
+view [table 717x517]
 ```
 This will create an empty table with 7x20 grid.
 
 Grid size of table can be specified separately, e.g. following will create empty table with 10 columns and 50 rows, but in previous boundaries.
 ```
-view [table 717x517 data 10x50 options [auto-col: #[true]]
+view [table 717x517 data 10x50 options [auto-col: #(true)]]
 ```
 When instead of grid size a block is presented as data, this block is interpreted as table. Block should consist of row blocks of equal size. E.g.
 ```
@@ -39,6 +54,7 @@ view [
 Non-standard delimiter (standard is comma) can currently be specified for urls only.
 
 If you have set up sqlite, data source may be specified as sql query, e.g.
+The 'chinook.db' can be found here (https://www.sqlitetutorial.net/wp-content/uploads/2018/03/chinook.zip)
 ```
 sql-query: func [sql][
     out: copy ""
@@ -57,17 +73,17 @@ view [
 **Auto-headers**
 It is possible to add automatcally indexed column (and/or row) to you tabel by specifying corresponding option. When `auto-col` is set to `true` an extra column will be created, automatically enumerated. By this the original order of rows can be restored whenever necessary:
 ```
-view [table 717x517 data 10x50 options [auto-col: #[true]]]
+view [table 717x517 data 10x50 options [auto-col: #(true)]]
 ```
 Both row and column headers can be specified in this manner:
 ```
-view [table 717x517 data 10x50 options [auto-col: #[true] auto-row: #[true]]]
+view [table 717x517 data 10x50 options [auto-col: #(true) auto-row: #(true)]]
 ```
 Auto-generated header refer to the position of given row/col in original data. Index row/col itself has index 0.
 
 Another way to auto-generate indexes is by option `sheet`:
 ```
-view [table options [sheet: #[true]]]
+view [table options [sheet: #(true)]]
 ```
 This way both column and row headers will always be generated. But they are different, referenig to actual visual order of rows/cols, not to their order in original data. Therefore also when sorting (see below) headers generated with `sheet` option will not change, but headers generated with `auto-col` and `auto-row` will be reordered.
 

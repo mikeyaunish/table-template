@@ -47,7 +47,7 @@ context [
 		pad -2x0 sql: area 490x60 wrap
 		panel [
 			origin 0x0
-			sql?: radio data #[true] 15 on-change [tbls/actors/on-change tbls none]
+			sql?: radio data #(true) 15 on-change [tbls/actors/on-change tbls none]
 			button "Query" 75 [
 				insert statement sql/text
 				render statement

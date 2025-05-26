@@ -154,7 +154,7 @@ WHERE countries.region_id = regions.region_id}
 		at 0x0 shell: area 490x60 wrap hidden on-created [face/offset: sql/offset]
 		panel [
 			origin 0x0
-			sql?: radio data #[true] 15 on-change [tbls/actors/on-change tbls none]
+			sql?: radio data #(true) 15 on-change [tbls/actors/on-change tbls none]
 			button "Query" 75 [
 				insert statement sql/text
 				render statement
