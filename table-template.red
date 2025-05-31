@@ -4,6 +4,7 @@ Red [
 	file: %table-template.red
 	date: 25-5-2025
 ]
+
 #include %style.red
 #include %re.red
 ~: make op! func [a b][re a b]
@@ -101,7 +102,9 @@ tbl: [
 
 	starting?: yes				 			
 	scroller-width: 17						
-	usable-grid: 0x0						
+	usable-grid: 0x0
+	max-usable: 0x0						
+	auto-save?: #(false)
 															
 	menu: [
 		"Cell" [
@@ -244,36 +247,57 @@ tbl: [
 			border/y: set-border face ofs 'y
 			either border = 0x0 [false][border]
 		]
-
-		set-grid: function [face [object!]][ 
+		
+		set-usable: function [ 
+				face [object!]
+				/local grid-size
+		][
+			grid-size: face/size - face/scroller-width ;-- bare bones grid-size without frozen
 			foreach dim [x y][
 				cur: face/current/:dim
 				i: k: sz: 0
 				if 0 < steps: face/total/:dim - cur [
 					repeat i steps [
 						j: cur + i
-						k: i
 						sz: to-integer (sz + get-size face dim face/index/:dim/:j)
-						if sz >= face/grid-size/:dim [
-							face/grid-offset/:dim: sz - to-integer face/grid-size/:dim 
-							if sz > face/grid-size/:dim [ 
-								k: k - 1
+						if sz >= grid-size/:dim [
+							if sz > grid-size/:dim [ 
+								i: i - 1
 							]
 							break
 						]
 					]
 				]
-				face/usable-grid/:dim: k
+				face/usable-grid/:dim: i
+			]
+			face/max-usable: max face/usable-grid face/max-usable 			
+		]
+		
+		set-grid: function [face [object!]][
+			foreach dim [x y][
+				cur: face/current/:dim
+				i: sz: 0
+				if 0 < steps: face/total/:dim - cur [
+					repeat i steps [
+						j: cur + i
+						sz: to-integer (sz + get-size face dim face/index/:dim/:j)
+						if sz >= face/grid-size/:dim [
+							face/grid-offset/:dim: sz - to-integer face/grid-size/:dim 
+							break
+						]
+					]
+				]
 				face/grid/:dim: i
 			]
-			face/usable-grid
-		]
+			set-usable face
+		]		
 
 		set-freeze-point: func [face [object!]][
 			face/freeze-point: 0x0
 			if face/frozen/y > 0 [face/freeze-point/y: face/draw/(face/frozen/y)/1/7/y]
 			if face/frozen/x > 0 [face/freeze-point/x: face/draw/1/(face/frozen/x)/7/x]
 			face/grid-size: face/size - face/freeze-point 
+			auto-save face
 			face/freeze-point
 		]
 		
@@ -289,7 +313,7 @@ tbl: [
 					face/freeze-point/x: face/freeze-point/x + get-size face 'x face/frozen-cols/:i
 				]
 			]
-			face/grid-size: face/size - face/freeze-point 
+			face/grid-size: face/size - face/freeze-point - face/scroller-width
 			face/freeze-point
 		]
 		
@@ -569,6 +593,7 @@ tbl: [
 			]
 			face/auto-x: make integer! face/auto-col?: to-logic face/options/auto-col
 			face/auto-y: make integer! face/auto-row?: to-logic face/options/auto-row
+			face/auto-save?: to-logic face/options/auto-save
 			repeat i face/total/y [append face/default-row-index i - face/auto-y]   ;Default is just simple sequence in initial order
 			if face/auto-col? [
 				face/indices/x/0: copy face/default-row-index                  ;Default is for first (auto-col) column
@@ -779,6 +804,7 @@ tbl: [
 			p0      [pair!   ]
 			p1      [pair!   ]
 		][
+
 			data-x: face/col-index/:index-x
 			either frozen? [
 				text: form case [
@@ -837,6 +863,8 @@ tbl: [
 			py0     [integer!]
 			py1     [integer!]
 		][
+			row
+
 			sx: get-size face 'x face/col-index/:index-x
 			px1: px0 + sx
 			p0: as-pair px0 py0
@@ -1234,8 +1262,19 @@ tbl: [
 						]
 					]
 				]
-			] 
+			]
+			 
 			fill face/extra/table ;Added temporarily for quick refreshing to update virtual rows
+			auto-save table-face
+		]
+		
+		auto-save: function [ face [object!] ][
+			if all [
+				file? face/data
+				to-logic face/auto-save? 
+			][
+				save-table face ;-- V75	
+			]
 		]
 
 		edit: function [ofs [pair!] sz [pair!] txt [string!]][
@@ -1965,17 +2004,18 @@ tbl: [
 		unfreeze: function [face [object!] dim [word!]][
 			face/top/:dim: face/current/:dim: face/frozen/:dim: 0
 			face/freeze-point/:dim: 0
-			face/grid-size/:dim: face/size/:dim
+			face/grid-size/:dim: face/size/:dim - face/scroller-width
 			face/scroller/:dim/position: 1 
 			set-grid face
 			set-last-page face
 			fill face
 			show-marks face
 			adjust-scroller face
+			auto-save face
 		]
 
 		adjust-size: func [face [object!]][
-			face/grid-size: face/grid-size - face/freeze-point ;-- - face/scroller-width
+			face/grid-size: face/grid-size - face/freeze-point - face/scroller-width
 			set-grid face
 			set-last-page face
 		]
@@ -2423,6 +2463,9 @@ tbl: [
 				home      [as-pair negate face/grid/x 0] ;TBD
 				end       [as-pair face/grid/x 0]        ;TBD
 			]
+
+			
+			
 			either all [face/active step] [
 				case [
 					; Active mark beyond edge
@@ -2469,13 +2512,14 @@ tbl: [
 						false
 					]
 					; Active mark on edge
+					
 					dim: case [ 
 						any [
-							all [
-								key = 'down 
-								(face/pos/y + 1 + face/current/y) > (face/usable-grid/y + face/current/y)
-								y <> 'done
-							] 
+							all [ 
+									key = 'down 
+									y <> 'done 
+									(min (face/active/y + 1) face/total/y) > min (face/current/y + face/max-usable/y - face/frozen/y) face/total/y
+								]
 							all [key = 'up      face/frozen/y + 1    = face/pos/y y <> 'done]
 							all [find [page-up page-down] key face/pos/y > face/frozen/y y <> 'done]
 						][
@@ -2487,10 +2531,12 @@ tbl: [
 							'y
 						]
 						any [
-							all [key = 'right face/frozen/x + face/grid/x = face/pos/x face/current/x < (face/total/x - face/last-page/x) x <> 'done]
+							;-- all [key = 'right face/frozen/x + face/grid/x = face/pos/x face/current/x < (face/total/x - face/last-page/x) x <> 'done]
+							all [key = 'right (face/pos/x + 1 + face/current/x) > (face/usable-grid/x + face/current/x) x <> 'done]
 							all [key = 'left  face/frozen/x + 1    = face/pos/x x <> 'done] 
 							all [key = 'right ofs: get-cell-offset face face/pos + step ofs/2/x >  face/size/x x <> 'done] 
 						][
+
 							df: scroll face 'x step/x
 							step/x: df
 							'x
@@ -2524,7 +2570,7 @@ tbl: [
 						]
 					]
 					;Active mark in center ;probe reduce [active step active + step]
-					true [ 
+					true [
 						case [
 							all [key = 'down  face/pos/y = face/frozen/y y <> 'done][scroll face 'y face/top/y - face/current/y]
 							all [key = 'right face/pos/x = face/frozen/x x <> 'done][scroll face 'x face/top/x - face/current/x]
@@ -3081,6 +3127,12 @@ tbl: [
 					]
 					init face
 				]
+			]
+			if all [
+				not file? face/data 
+				to-logic face/options/auto-save? 
+			][
+				request-message "Can not use 'auto-save' when the data for the table is a Red block"
 			]
 		]
 		
