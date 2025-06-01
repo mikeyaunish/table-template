@@ -1,18 +1,19 @@
 # Customized Version of table-template 
 This repository is a fork of table-template work done by Toomasv. The original project can be found at (https://github.com/toomasv/table-template). 
 
-The initial modifications allow the template to work with Red Verion 0.6.6 
+The modifications allow the template to work with Red Verion 0.6.6 and onward.  
 
 
-**Changes include:**- 
+**Changes include:** 
 - Update map and construction syntax in program and in the documentation below
 - Move all template fields from the actors block into the template block
-- Move field actors/data to newly created 'table-data field
-- Create usable-grid field to support more precise scrolling at the end of the sheet. 
+- Move the actors/data field to the newly created 'table-data field
+- Create `usable-grid` and `max-usable` fields to support more precise scrolling at the end of the sheet. 
 - Cleanup of various old comments. 
 
-This version of table-template should work almost exactly as the original did.(Take into account that 'table-data is in ) All of the original documentation is below, with some minor changes to reflect this version.
+This version of table-template should work almost exactly as the original did.(Take into account that the new 'table-data field is now contained within the style itself ) All of the original documentation is below, with some minor changes to reflect this version.
 
+Any changes made to the template (after 30-May-2025) are now documented in the [CHANGE-LOG.md](CHANGE-LOG.md) file. 
 
 # table-template
 Template for table style

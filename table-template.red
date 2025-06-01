@@ -104,7 +104,6 @@ tbl: [
 	scroller-width: 17						
 	usable-grid: 0x0
 	max-usable: 0x0						
-	auto-save?: #(false)
 															
 	menu: [
 		"Cell" [
@@ -297,7 +296,6 @@ tbl: [
 			if face/frozen/y > 0 [face/freeze-point/y: face/draw/(face/frozen/y)/1/7/y]
 			if face/frozen/x > 0 [face/freeze-point/x: face/draw/1/(face/frozen/x)/7/x]
 			face/grid-size: face/size - face/freeze-point 
-			auto-save face
 			face/freeze-point
 		]
 		
@@ -593,7 +591,6 @@ tbl: [
 			]
 			face/auto-x: make integer! face/auto-col?: to-logic face/options/auto-col
 			face/auto-y: make integer! face/auto-row?: to-logic face/options/auto-row
-			face/auto-save?: to-logic face/options/auto-save
 			repeat i face/total/y [append face/default-row-index i - face/auto-y]   ;Default is just simple sequence in initial order
 			if face/auto-col? [
 				face/indices/x/0: copy face/default-row-index                  ;Default is for first (auto-col) column
@@ -954,6 +951,7 @@ tbl: [
 			system/view/auto-sync?: on
 			recycle/on
 			face/draw: face/draw
+			auto-save face
 		]
 
 		ask-code: function [/with default /txt deftext][
@@ -1263,17 +1261,15 @@ tbl: [
 					]
 				]
 			]
-			 
 			fill face/extra/table ;Added temporarily for quick refreshing to update virtual rows
-			auto-save table-face
 		]
 		
 		auto-save: function [ face [object!] ][
 			if all [
 				file? face/data
-				to-logic face/auto-save? 
+				to-logic face/options/auto-save
 			][
-				save-table face ;-- V75	
+				save-table face 
 			]
 		]
 
@@ -2011,7 +2007,6 @@ tbl: [
 			fill face
 			show-marks face
 			adjust-scroller face
-			auto-save face
 		]
 
 		adjust-size: func [face [object!]][
@@ -3130,9 +3125,9 @@ tbl: [
 			]
 			if all [
 				not file? face/data 
-				to-logic face/options/auto-save? 
+				to-logic face/options/auto-save 
 			][
-				request-message "Can not use 'auto-save' when the data for the table is a Red block"
+				print "Can not use 'auto-save' when the data for the table is a Red block"
 			]
 		]
 		
