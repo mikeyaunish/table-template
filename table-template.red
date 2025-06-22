@@ -2,7 +2,8 @@ Red [
 	title: "table-template"
 	author: [@toomasv  custom fork by: @mikeyaunish]
 	file: %table-template.red
-	date: 16-JUNE-2025
+	git-url: https://github.com/mikeyaunish/table-template
+	date: 20-JUNE-2025
 ]
 
 #include %style.red
@@ -94,11 +95,16 @@ tbl: [
 	digit: charset "0123456789"
 	int: [some digit]
 	ws: charset " ^-"
-
+	
+	alpha: charset [#"a" - #"z" #"A" - #"Z"]
+	alpha+digit: union alpha digit
+	alpha+digit+space: union alpha+digit (charset " ")
+	
 	starting?: yes
 	scroller-width: 17
 	usable-grid: 0x0
 	max-usable: 0x0
+	edit-mode?: #(false)
 
 	menu: [
 		"Cell" [
@@ -974,26 +980,54 @@ tbl: [
 			append table/parent/pane layout/only compose/deep [
 				at 0x0 tbl-editor: field hidden with [
 					options: [text: none]
-					extra: #[]
-				] on-enter [
-					face/visible?: no
-					update-data face (table)
-					set-focus face/extra/table
-				] on-key-down [
+					extra: #[
+						on-table-tab: true
+						edit-mode?: false
+					]
+				] 
+				;-- flags: [ none ] 
+				on-key-down [
 					switch event/key [
+						#"^M" [ ;-- enter
+							face/visible?: no
+							update-data face (table)
+							set-focus face/extra/table
+							direction: either find event/flags 'shift[ 'up ] [ 'down ]
+							face/extra/table/actors/hot-keys/feed face/extra/table #(none) direction
+						]
 						#"^[" [ ;esc
 							append clear face/text face/options/text
 							face/visible?: no
+							set-focus face/extra/table
 						]
 						down  [
-							show-editor face/extra/table face/extra/cell + 0x1
+							;-- show-editor face/extra/table face/extra/cell + 0x1
+							face/visible?: no
+							update-data face (table)
+							set-focus face/extra/table
+							face/extra/table/actors/hot-keys/feed face/extra/table #(none) 'down
 						]
-						up    [show-editor face/extra/table face/extra/cell - 0x1]
-						#"^-" [
-							either find event/flags 'shift [
-								show-editor face/extra/table face/extra/cell - 1x0
-							][
-								show-editor face/extra/table face/extra/cell + 1x0
+						up [
+							;-- show-editor face/extra/table face/extra/cell - 0x1
+							face/visible?: no
+							update-data face (table)
+							set-focus face/extra/table
+							face/extra/table/actors/hot-keys/feed face/extra/table #(none) 'up
+						]
+						left [
+							if not face/extra/edit-mode? [
+								face/visible?: no
+								update-data face (table)
+								set-focus face/extra/table
+								face/extra/table/actors/hot-keys/feed face/extra/table #(none) 'left
+							]
+						]
+						right [
+							if not face/extra/edit-mode? [
+								face/visible?: no
+								update-data face (table)
+								set-focus face/extra/table
+								face/extra/table/actors/hot-keys/feed face/extra/table none 'right
 							]
 						]
 					]
@@ -1004,7 +1038,11 @@ tbl: [
 			table/tbl-editor: tbl-editor
 		]
 
-		use-editor: function [face [object!] event [event! none!]][
+		use-editor: function [
+			face [object!] 
+			event [event! none!]
+			/edit-mode
+		][
 			either face/tbl-editor [
 				if tbl-editor/visible? [
 					update-data tbl-editor face 	;Make sure field is updated according to correct type
@@ -1014,10 +1052,16 @@ tbl: [
 				make-editor face
 			]
 			cell: get-draw-address face event                     ;Draw-cell address
-			show-editor face cell
+			show-editor/:edit-mode face cell
 		]
 
-		show-editor: function [face [object!] cell [pair!]][
+		show-editor: function [
+			face [object!] 
+			cell [pair!]
+			/with with-char [char!]
+			/edit-mode 
+		][
+			face/tbl-editor/extra/edit-mode?: :edit-mode 
 			addr: get-data-address face cell
 			col: addr/x
 			ofs:  get-cell-offset face cell
@@ -1043,7 +1087,12 @@ tbl: [
 				face/tbl-editor/extra/addr: addr                       ;Register data address
 				face/tbl-editor/extra/cell: cell                       ;Register draw-cell address
 				fof: to-pair face/offset                          ;Compensate offset for VID space
-				edit face fof + ofs/1 ofs/2 - ofs/1 txt
+				either with [
+					edit/with face fof + ofs/1 ofs/2 - ofs/1 txt with-char
+				][
+					edit face fof + ofs/1 ofs/2 - ofs/1 txt	
+				]
+				
 			][face/tbl-editor/visible?: no]
 		]
 
@@ -1281,7 +1330,17 @@ tbl: [
 			]
 		]
 
-		edit: function [face [object!] ofs [pair!] sz [pair!] txt [string!]][
+		edit: function [
+			face [object!] 
+			ofs [pair!] 
+			sz [pair!] 
+			txt [string!]
+			/with with-char [char!]
+		][
+			if with [ 
+				txt: copy to-string with-char
+			]
+			
 			win: face/tbl-editor
 			until [win: win/parent win/type = 'window]
 			face/tbl-editor/offset:    ofs
@@ -1289,6 +1348,10 @@ tbl: [
 			face/tbl-editor/text:      txt
 			face/tbl-editor/visible?:  yes
 			win/selected:         face/tbl-editor
+			if with [
+				face/tbl-editor/selected: 2x2
+				set-focus face/tbl-editor
+			]
 		]
 
 		edit-column: function [face [object!] event [event! none!]][
@@ -2454,8 +2517,21 @@ tbl: [
 			show-marks face
 		]
 
-		hot-keys: function [face [object!] event [event! none!]][
+		hot-keys: function [
+			face [object!] 
+			event [event! none!]
+			/feed fed-key [word!]
+		][
 
+			if feed [
+				event: object [ 
+					shift?: #(false)
+					ctrl?: #(false)
+					flags: []
+					key: fed-key
+				]
+			]
+			
 			key: event/key
 			step: switch key [
 				down      [0x1]
@@ -2464,10 +2540,9 @@ tbl: [
 				right     [1x0]
 				page-up   [as-pair 0 negate face/grid/y]
 				page-down [as-pair 0 face/grid/y]
-				home      [as-pair negate face/grid/x 0] ;TBD
-				end       [as-pair face/grid/x 0]        ;TBD
+				home      [as-pair negate face/grid/x 0]
+				end       [as-pair face/grid/x 0]
 			]
-			
 			either all [face/active step] [
 				case [
 					; Active mark beyond edge
@@ -2601,9 +2676,21 @@ tbl: [
 				][
 					switch key [
 						#"^M" [
-							unless face/tbl-editor [make-editor face]
-							show-editor face face/pos
+							direction: either find event/flags 'shift [ 'up ] [ 'down ]
+							face/actors/hot-keys/feed face #(none) direction 							
 						]
+						F2 [
+							unless face/tbl-editor [make-editor face]
+							show-editor/edit-mode face face/pos
+						]						
+					]
+					if all [
+						char? key
+						(find face/alpha+digit+space key)
+					] [
+						unless face/tbl-editor [make-editor face]
+						show-editor/with face face/pos key
+						
 					]
 				]
 			]
@@ -3103,8 +3190,10 @@ tbl: [
 			]
 			address
 		]
-
-		on-dbl-click: function [face [object!] event [event! none!] /local e][use-editor face event]
+		
+		on-dbl-click: function [face [object!] event [event! none!]][
+			use-editor/edit-mode face event
+		]
 
 		on-key-down: func [face [object!] event [event! none!]][hot-keys face event]
 		
@@ -3142,14 +3231,34 @@ tbl: [
 				not file? face/data
 				to-logic face/options/auto-save
 			][
-				print [ "Can not use 'auto-save' when the data for the table is a Red block." newline "auto-save only works when the data is a file." ]
 			]
 		]
 
 		on-menu: function [face [object!] event [event! none!]][do-menu face event]
 	]
+]
+
+on-table-tab-handler: func [
+    face [object!]
+    event [event!]
+][
+	if all [
+		(event/key = #"^-") ((event/type = 'key-down))
+	][
+		direction: either find event/flags 'shift [ 'left ] [ 'right ]
+		either find face/extra 'on-table-tab [
+			face/visible?: no
+			face/extra/table/actors/update-data face face/extra/table
+			set-focus face/extra/table			
+			face/extra/table/actors/hot-keys/feed face/extra/table none direction
+		][
+			face/actors/hot-keys/feed face none direction 
+		]	
+		return 'done		
+	]
 	
 ]
+insert-event-func 'on-table-tab-handler :on-table-tab-handler 
 
 style/init 'table tbl [
 	face: self

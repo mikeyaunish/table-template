@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 Changes that deviate from the initial project are documented in reverse chronological order below. 
 
+### 21-June-2025
+- Change data input to replicate standard spreadsheet behavior
+- Add on-table-tab-handler to deal with spreadsheet tabbing behavior
+
 ### 16-June-2025
 - Add scroller-width to set-freeze-point
 - Change init of tbl-editor to #(none)
