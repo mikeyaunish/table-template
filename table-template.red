@@ -1,10 +1,10 @@
 Red [
 	title: "table-template"
-	authors: {@toomasv  custom fork by: @mikeyaunish and @kavina computers}
+	author: {@toomasv  custom fork by: @mikeyaunish and @kavina computers}
 	file: %table-template.red
 	git-url: https://github.com/mikeyaunish/table-template
-	modification: 86
-	date: 29-JUN-2025
+	modification: 87
+	date: 11-JUL-2025
 ]
 
 #include %style.red
@@ -68,14 +68,8 @@ tbl: [
 	frozen-nums/y: 	frozen-rows
 
 	col-type:  make map! 5
-	read-only-cols: make map! 5
 
-	; Enhanced cell types configuration
-	cell-configs: make map! 100  ; Store configuration for enhanced cell types
-	
 	colors:    make map! 100
-	auto-color-rules: make block! 10
-	auto-color-func: none
 	defaults:  make map! 10
 	auto-col?: #(false)
 	auto-row?: #(false)
@@ -106,18 +100,10 @@ tbl: [
 	starting?: yes
 	scroller-width: 17
 	usable-grid: 0x0
-	max-usable: 0x0
+	max-grid: 0x0
+	perfect-fit: [ #(false) #(false) ]
+	
 	edit-mode?: #(false)
-
-	; Options configuration (will be initialized as map during object creation)
-	options: none
-
-	; External Data Bridge Support
-	external-mode?: #(false)
-	external-adapter: none
-	external-cache: none
-	external-config: none
-	fallback-data: none
 
 	menu: [
 		"Cell" [
@@ -206,26 +192,6 @@ tbl: [
 				"Draw"     draw
 				"Do"       do
 				"Icon"     icon
-				"Enhanced" [
-					"Checkbox"  checkbox
-					"Radio"     radio
-					"Dropdown"  dropdown
-					"Slider"    slider
-					"Rating"    rating
-				]
-			]
-			"Read-only" [
-				"Set"      set-col-readonly
-				"Unset"    unset-col-readonly
-			]
-			"Auto color" [
-				"Negative = Red"     add-col-negative-rule
-				"Positive = Green"   add-col-positive-rule
-				"Zero = Gray"        add-col-zero-rule
-				"High values (>100)" add-col-high-rule
-				"Text 'Error' = Red" add-col-error-rule
-				"Custom range..."    add-col-custom-range
-				"Clear column rules" clear-col-auto-colors
 			]
 			"Set default"  set-default
 		]
@@ -244,17 +210,6 @@ tbl: [
 			"Use state ..." use-state
 			"Save state as ..." save-state
 			"Clear color" clear-color
-			"Auto color" [
-				"Add rule" [
-					"Negative = Red"     add-negative-rule
-					"Positive = Green"   add-positive-rule
-					"Zero = Gray"        add-zero-rule
-					"High values (>100)" add-high-rule
-					"Text 'Error' = Red" add-error-rule
-					"Custom range..."    add-custom-range
-				]
-				"Clear all rules"    clear-auto-colors
-			]
 			"Select named range" []
 			"Forget names" forget-names
 		]
@@ -268,6 +223,29 @@ tbl: [
 		]
 	]
 	actors: [
+		
+		in-view: function [ face [object!] ][ 
+			perfect-adj: either face/perfect-fit/2 [ 0 ][ 1 ] 
+			in-view-start: face/current/y + face/frozen/y
+			in-view-end: min (in-view-start + face/max-grid/y - perfect-adj - face/frozen/y) face/total/y
+			return to-pair reduce [ in-view-start in-view-end ]
+		]		
+		
+		to-valid-key: function [ 
+			key 
+			flags
+		][
+			if not char? key [ return none ]
+			if find charset [#" " - #"~"] key [
+				if find flags 'shift [
+					if fnd: system/words/select rejoin [ "`~1!2@3#4$5%6^^7&8*9(0)-_=+[{]}\|;:,<.>/?" {'"}]  key [
+						return fnd
+					]
+				]
+				return key
+			]
+		]
+				
 		on-create: func [face [object!] event [event! none!]][] ;-- placeholder to allow init changes
 		
 		set-border: function [face [object!] ofs [pair!] dim [word!]][
@@ -300,6 +278,7 @@ tbl: [
 		][
 			grid-size: face/size - face/scroller-width ;-- bare bones grid-size without frozen
 			foreach dim [x y][
+				over-run: #(false)
 				cur: face/current/:dim
 				i: k: sz: 0
 				if 0 < steps: face/total/:dim - cur [
@@ -307,16 +286,28 @@ tbl: [
 						j: cur + i
 						sz: to-integer (sz + get-size face dim face/index/:dim/:j)
 						if sz >= grid-size/:dim [
-							if sz > grid-size/:dim [
+							over-run: #(true)
+							either sz > grid-size/:dim [
 								i: i - 1
+							][
+								element: either dim = 'x [ 1 ][ 2]
+								face/perfect-fit/:element: #(true)
 							]
 							break
 						]
 					]
 				]
+				
+				if not over-run [ 
+					if face/current/:dim = face/frozen/:dim [
+						i: i + face/frozen/:dim 
+						if i = face/total/:dim [
+							i: i - face/frozen/:dim
+						]
+					]
+				]
 				face/usable-grid/:dim: i
 			]
-			face/max-usable: max face/usable-grid face/max-usable
 		]
 
 		set-grid: function [face [object!]][
@@ -336,6 +327,7 @@ tbl: [
 				face/grid/:dim: i
 			]
 			set-usable face
+			face/max-grid: max face/max-grid face/grid 
 		]
 
 		set-freeze-point: func [face [object!]][
@@ -468,30 +460,6 @@ tbl: [
 				]
 			]
 		]
-		
-		get-cell-bounds: function [face [object!] address [pair!]][
-			"Get cell bounds as [top-left bottom-right] pair from data address"
-			; Convert data address to draw address first
-			draw-x: either address/x <= face/frozen/x [
-				address/x
-			][
-				pos: index? find face/col-index address/x
-				either pos [pos - face/current/x + face/frozen/x][none]
-			]
-			draw-y: either address/y <= face/frozen/y [
-				address/y  
-			][
-				pos: index? find face/row-index address/y
-				either pos [pos - face/current/y + face/frozen/y][none]
-			]
-			
-			if all [draw-x draw-y] [
-				draw-cell: as-pair draw-x draw-y
-				if offsets: get-cell-offset face draw-cell [
-					reduce [offsets/1 offsets/2]  ; [start-pair end-pair]
-				]
-			]
-		]
 
 		get-draw-col: function [face [object!] event [event! none!]][
 			if block? row: face/draw/1 [
@@ -588,194 +556,8 @@ tbl: [
 			any [face/sizes/:dim/:idx face/box/:dim]
 		]
 
-		is-col-readonly?: func [face [object!] col [integer!]][
-			to-logic face/read-only-cols/:col
-		]
-
-		get-auto-color: func [face [object!] value [any-type!] data-x [integer!] data-y [integer!]][
-			; Check if there's a custom function first
-			if function? face/auto-color-func [
-				if color: face/auto-color-func value data-x data-y [
-					return color
-				]
-			]
-			
-			; Check built-in rules - rules are stored as flat elements in the block
-			; Format: [type condition color] for value/text rules, [type min max color] for range rules
-			; Format: [col-type column condition color] for column-specific rules
-			i: 1
-			while [i <= length? face/auto-color-rules] [
-				if i + 2 <= length? face/auto-color-rules [
-					rule-type: face/auto-color-rules/:i
-					
-					switch/default rule-type [
-						value [
-							rule-condition: face/auto-color-rules/(i + 1)
-							rule-color: face/auto-color-rules/(i + 2)
-							switch/default rule-condition [
-								negative [if all [number? value value < 0] [return rule-color]]
-								positive [if all [number? value value > 0] [return rule-color]]
-								zero     [if all [number? value value = 0] [return rule-color]]
-							][none]
-							i: i + 3  ; 3 elements for value rules
-						]
-						range [
-							; For range rules: [range min-val max-val color] - 4 elements total
-							either i + 3 <= length? face/auto-color-rules [
-								min-val: face/auto-color-rules/(i + 1)
-								max-val: face/auto-color-rules/(i + 2)
-								range-color: face/auto-color-rules/(i + 3)
-								if all [
-									number? value 
-									value >= min-val 
-									value <= max-val
-								] [
-									return range-color
-								]
-								i: i + 4  ; 4 elements for range rules
-							][
-								i: i + 3  ; Safety fallback
-							]
-						]
-						text [
-							rule-condition: face/auto-color-rules/(i + 1)
-							rule-color: face/auto-color-rules/(i + 2)
-							if all [
-								string? str: form value
-								find str rule-condition
-							] [return rule-color]
-							i: i + 3  ; 3 elements for text rules
-						]
-						col-value [
-							; Column-specific value rules: [col-value column condition color] - 4 elements
-							either i + 3 <= length? face/auto-color-rules [
-								target-col: face/auto-color-rules/(i + 1)
-								rule-condition: face/auto-color-rules/(i + 2)
-								rule-color: face/auto-color-rules/(i + 3)
-								if data-x = target-col [
-									switch/default rule-condition [
-										negative [if all [number? value value < 0] [return rule-color]]
-										positive [if all [number? value value > 0] [return rule-color]]
-										zero     [if all [number? value value = 0] [return rule-color]]
-									][none]
-								]
-								i: i + 4  ; 4 elements for column-specific value rules
-							][
-								i: i + 3  ; Safety fallback
-							]
-						]
-						col-range [
-							; Column-specific range rules: [col-range column min max color] - 5 elements
-							either i + 4 <= length? face/auto-color-rules [
-								target-col: face/auto-color-rules/(i + 1)
-								min-val: face/auto-color-rules/(i + 2)
-								max-val: face/auto-color-rules/(i + 3)
-								range-color: face/auto-color-rules/(i + 4)
-								if all [
-									data-x = target-col
-									number? value 
-									value >= min-val 
-									value <= max-val
-								] [
-									return range-color
-								]
-								i: i + 5  ; 5 elements for column-specific range rules
-							][
-								i: i + 3  ; Safety fallback
-							]
-						]
-						col-text [
-							; Column-specific text rules: [col-text column condition color] - 4 elements
-							either i + 3 <= length? face/auto-color-rules [
-								target-col: face/auto-color-rules/(i + 1)
-								rule-condition: face/auto-color-rules/(i + 2)
-								rule-color: face/auto-color-rules/(i + 3)
-								if all [
-									data-x = target-col
-									string? str: form value
-									find str rule-condition
-								] [return rule-color]
-								i: i + 4  ; 4 elements for column-specific text rules
-							][
-								i: i + 3  ; Safety fallback
-							]
-						]
-					][
-						; Skip unknown rule types
-						i: i + 1
-					]
-				] [
-					break  ; Not enough elements left
-				]
-			]
-			none  ; No auto-color rule matched
-		]
-
-		get-color: func [face [object!] value [any-type!] data-x [integer!] data-y [integer!] i [integer!] frozen? [logic!] readonly? [logic!]][
-			case [
-				readonly? [240.240.240]  ; Light gray for read-only
-				frozen? [silver]
-				odd? i [white] 
-				'else [snow]
-			]
-		]
-
-		; EXTERNAL DATA BRIDGE FUNCTIONS
-
-		get-table-cell: func [face [object!] row [integer!] col [integer!]][
-			"Get cell data from either internal or external source"
-			either face/external-mode? [
-				; External data mode - use bridge
-				either face/external-adapter [
-					pick* face/external-adapter row col
-				][
-					; Fallback to internal data if adapter not available
-					either all [
-						row > 0 row <= length? face/table-data
-						col > 0 col <= length? first face/table-data
-					][
-						face/table-data/:row/:col
-					][
-						face/dummy
-					]
-				]
-			][
-				; Internal data mode - direct access
-				either all [
-					row > 0 row <= length? face/table-data
-					col > 0 col <= length? first face/table-data
-				][
-					face/table-data/:row/:col
-				][
-					face/dummy
-				]
-			]
-		]
-
-		set-table-cell: func [face [object!] row [integer!] col [integer!] value [any-type!]][
-			"Set cell data in either internal or external source"
-			either face/external-mode? [
-				; External data mode - use bridge
-				either face/external-adapter [
-					poke* face/external-adapter row col value
-				][
-					; Fallback to internal data if adapter not available
-					if all [
-						row > 0 row <= length? face/table-data
-						col > 0 col <= length? first face/table-data
-					][
-						face/table-data/:row/:col: value
-					]
-				]
-			][
-				; Internal data mode - direct access
-				if all [
-					row > 0 row <= length? face/table-data
-					col > 0 col <= length? first face/table-data
-				][
-					face/table-data/:row/:col: value
-				]
-			]
+		get-color: func [i [integer!] frozen? [logic!]][
+			case [frozen? [silver] odd? i [white] 'else [snow]]
 		]
 
 		; INITIATION
@@ -964,17 +746,9 @@ tbl: [
 		][
 			either index-x <= face/total/x [
 				data-x: face/col-index/:index-x
-				readonly?: is-col-readonly? face data-x
-				value: case [
-					all [data-y > 0 data-x > 0] [get-table-cell face data-y data-x]
-					data-x = 0 [either face/sheet? [index-y][data-y]]
-					data-y = 0 [either face/sheet? [index-x][data-x]]
-					true [none]
-				]
-				cell/4: any [
-					face/colors/(as-pair data-x data-y)  ; Manual color takes priority
-					if all [data-x > 0 data-y > 0] [get-auto-color face value data-x data-y]  ; Auto color
-					get-color face value data-x data-y draw-y frozen? readonly?  ; Default color
+				cell/4:  any [
+					face/colors/(as-pair data-x data-y)
+					get-color draw-y frozen?
 				]
 				cell/9:  (cell/6: p0) + 1
 				cell/10: (cell/7: p1) - 1
@@ -983,7 +757,7 @@ tbl: [
 					cell/11/1: 'text
 					cell/11/2:  4x2  +  p0
 					cell/11/3: form case [
-						all [data-y > 0 data-x > 0][any [get-table-cell face data-y data-x face/dummy]]
+						all [data-y > 0 data-x > 0][any [face/table-data/:data-y/:data-x face/dummy]]
 						data-x = 0 [either face/sheet? [index-y][data-y]]
 						data-y = 0 [either face/sheet? [index-x][data-x]]
 						all [v: face/virtual-rows/:data-y v: v/data/:data-x] [form v]
@@ -991,12 +765,6 @@ tbl: [
 						true [face/dummy]
 					]
 				][
-					; Check if this is an enhanced cell type and not a header
-					enhanced?: all [
-						not string? get-table-cell face data-y data-x  ; Skip cells with string data (headers)
-						find [checkbox radio dropdown slider rating] type
-					]
-					
 					switch/default type [; AND whether it is specific
 						draw [
 							cell/11/1: 'translate
@@ -1029,88 +797,6 @@ tbl: [
 								cell/11/1: 'text
 								cell/11/2: cell/9
 								cell/11/3: face/dummy
-							]
-						]
-						; Enhanced cell types - only render if not a header
-						checkbox [
-							either enhanced? [
-								cell-data: face/table-data/:data-y/:data-x
-								cell-value: either logic? cell-data [cell-data][false]
-								config: get-cell-config face data-x
-								label: any [config/label ""]
-								cell/11/1: 'translate
-								cell/11/2: cell/9
-								cell/11/3: draw-checkbox 0x0 (cell/7 - cell/6) cell-value label
-							][
-								; Render as text for headers
-								cell/11/1: 'text
-								cell/11/2: 4x2 + cell/6
-								cell/11/3: form face/table-data/:data-y/:data-x
-							]
-						]
-						radio [
-							either enhanced? [
-								cell-data: face/table-data/:data-y/:data-x
-								cell-value: either integer? cell-data [cell-data][0]
-								config: get-cell-config face data-x
-								options: any [config/options ["A" "B" "C"]]
-								cell/11/1: 'translate
-								cell/11/2: cell/9
-								cell/11/3: draw-radio 0x0 (cell/7 - cell/6) options cell-value
-							][
-								; Render as text for headers
-								cell/11/1: 'text
-								cell/11/2: 4x2 + cell/6
-								cell/11/3: form face/table-data/:data-y/:data-x
-							]
-						]
-						dropdown [
-							either enhanced? [
-								cell-data: face/table-data/:data-y/:data-x
-								cell-value: either integer? cell-data [cell-data][0]
-								config: get-cell-config face data-x
-								options: any [config/options ["Option 1" "Option 2" "Option 3"]]
-								cell/11/1: 'translate
-								cell/11/2: cell/9
-								cell/11/3: draw-dropdown 0x0 (cell/7 - cell/6) options cell-value
-							][
-								; Render as text for headers
-								cell/11/1: 'text
-								cell/11/2: 4x2 + cell/6
-								cell/11/3: form face/table-data/:data-y/:data-x
-							]
-						]
-						slider [
-							either enhanced? [
-								cell-data: face/table-data/:data-y/:data-x
-								cell-value: either number? cell-data [cell-data][0]
-								config: get-cell-config face data-x
-								min-val: any [config/min 0]
-								max-val: any [config/max 100]
-								cell/11/1: 'translate
-								cell/11/2: cell/9
-								cell/11/3: draw-slider 0x0 (cell/7 - cell/6) cell-value min-val max-val
-							][
-								; Render as text for headers
-								cell/11/1: 'text
-								cell/11/2: 4x2 + cell/6
-								cell/11/3: form face/table-data/:data-y/:data-x
-							]
-						]
-						rating [
-							either enhanced? [
-								cell-data: face/table-data/:data-y/:data-x
-								cell-value: either number? cell-data [cell-data][0]
-								config: get-cell-config face data-x
-								max-stars: any [config/max-stars 5]
-								cell/11/1: 'translate
-								cell/11/2: cell/9
-								cell/11/3: draw-rating 0x0 (cell/7 - cell/6) cell-value max-stars
-							][
-								; Render as text for headers
-								cell/11/1: 'text
-								cell/11/2: 4x2 + cell/6
-								cell/11/3: form face/table-data/:data-y/:data-x
 							]
 						]
 					][
@@ -1159,25 +845,15 @@ tbl: [
 		][
 
 			data-x: face/col-index/:index-x
-			readonly?: is-col-readonly? face data-x
-			value: case [
-				data-x = 0 [either face/sheet? [index-y][data-y]]
-				data-y = 0 [either face/sheet? [index-x][data-x]]
-				true [any [face/table-data/:data-y/:data-x face/dummy]]
-			]
-			
-			; Determine cell color with proper priority
-			cell-color: any [
-				face/colors/(as-pair data-x data-y)  ; Manual color takes priority
-				if all [data-x > 0 data-y > 0] [get-auto-color face value data-x data-y]  ; Auto color
-				get-color face value data-x data-y draw-y frozen? readonly?  ; Default color
-			]
-			
 			either frozen? [
-				text: form value
+				text: form case [
+					data-x = 0 [either face/sheet? [index-y][data-y]]
+					data-y = 0 [either face/sheet? [index-x][data-x]]
+					true [any [face/table-data/:data-y/:data-x face/dummy]]
+				]
 				cell: compose/only [
 					line-width 1
-					fill-pen (cell-color)
+					fill-pen (get-color draw-y frozen?)
 					box (p0) (p1)
 					clip (p0 + 1) (p1 - 1)
 					(reduce ['text p0 + 4x2 text])
@@ -1191,50 +867,6 @@ tbl: [
 					all [t: face/col-type/:data-x t = 'do][
 						text: form either face/table-data/:data-y/:data-x [do face/table-data/:data-y/:data-x][face/dummy]
 					]
-					; Enhanced cell types - skip if cell data is string (header)
-					enhanced?: all [
-						not string? face/table-data/:data-y/:data-x  ; Skip cells with string data (headers)
-						find [checkbox radio dropdown slider rating] face/col-type/:data-x
-					][
-						switch face/col-type/:data-x [
-							checkbox [
-								cell-data: face/table-data/:data-y/:data-x
-								cell-value: either logic? cell-data [cell-data][false]
-								config: get-cell-config face data-x
-								label: any [config/label ""]
-								drawing: draw-checkbox p0 p1 cell-value label
-							]
-							radio [
-								cell-data: face/table-data/:data-y/:data-x
-								cell-value: either integer? cell-data [cell-data][0]
-								config: get-cell-config face data-x
-								options: any [config/options ["A" "B" "C"]]
-								drawing: draw-radio p0 p1 options cell-value
-							]
-							dropdown [
-								cell-data: face/table-data/:data-y/:data-x
-								cell-value: either integer? cell-data [cell-data][0]
-								config: get-cell-config face data-x
-								options: any [config/options ["Option 1" "Option 2" "Option 3"]]
-								drawing: draw-dropdown p0 p1 options cell-value
-							]
-							slider [
-								cell-data: face/table-data/:data-y/:data-x
-								cell-value: either number? cell-data [cell-data][0]
-								config: get-cell-config face data-x
-								min-val: any [config/min 0]
-								max-val: any [config/max 100]
-								drawing: draw-slider p0 p1 cell-value min-val max-val
-							]
-							rating [
-								cell-data: face/table-data/:data-y/:data-x
-								cell-value: either number? cell-data [cell-data][0]
-								config: get-cell-config face data-x
-								max-stars: any [config/max-stars 5]
-								drawing: draw-rating p0 p1 cell-value max-stars
-							]
-						]
-					]
 					true [
 						text: form case [
 							data-x = 0 [either face/sheet? [index-y][data-y]]
@@ -1245,12 +877,11 @@ tbl: [
 				]
 				cell: compose/only [
 					line-width 1
-					fill-pen (cell-color)
+					fill-pen (get-color draw-y frozen?)
 					box (p0) (p1)
 					clip (p0 + 1) (p1 - 1)
 					(reduce case [
 						draw? [['translate  p0 + 1x1  drawing]]
-						enhanced? [['translate  p0 + 1x1  drawing]]
 						true  [['text       p0 + 4x2  text]]
 					])
 				]
@@ -1463,7 +1094,7 @@ tbl: [
 		show-editor: function [
 			face [object!] 
 			cell [pair!]
-			/with with-char [char!]
+			/with with-char [char! string!]
 			/edit-mode 
 		][
 			
@@ -1471,13 +1102,6 @@ tbl: [
 			addr: get-data-address face cell
 			col: addr/x
 			ofs:  get-cell-offset face cell
-			
-			; Check if column is read-only
-			if all [col > 0 is-col-readonly? face col] [
-				; Don't allow editing of read-only columns
-				exit
-			]
-			
 			either col <> 0 [
 				;if auto [col: col + 1]
 				face/tbl-editor/extra/table: face                      ;Reference to table itself
@@ -1616,21 +1240,25 @@ tbl: [
 						addr/y > 0 [;Don't update auto-row
 							case [
 								addr/x > 0 [ ; Don't update auto-col
-									; Check if column is read-only
-									if is-col-readonly? table-face addr/x [exit]
-									type: type? get-table-cell table-face addr/y addr/x
+									type: type? table-face/table-data/(addr/y)/(addr/x)
 									;if face/extra/table/options/auto-col [addr2/x: addr/x + 1]  ;@@ ??
-									set-table-cell table-face addr/y addr/x switch/default table-face/col-type/(addr2/x) [
-										logic!      [tx: attempt [get face/data]]
-										draw image! [tx: face/data]
+									table-face/table-data/(addr/y)/(addr/x): switch/default table-face/col-type/(addr2/x) [
+										logic!      [
+											;-- tx: attempt [get face/data]
+											either any [
+												addr/x = table-face/frozen/x
+												addr/y = table-face/frozen/y
+											][
+												tx: form face/data
+											][
+												tx: attempt [get face/data]
+											]											
+										]
+										draw image! [
+											tx: face/data
+										]
 										do          [tx: to-block face/text]
 										icon        [tx: face/text]
-										; Enhanced cell types
-										checkbox    [attempt [to-logic face/text]]
-										radio       [attempt [to-integer face/text]]
-										dropdown    [attempt [to-integer face/text]]
-										slider      [attempt [to-decimal face/text]]
-										rating      [attempt [to-decimal face/text]]
 									][
 										;-- default 
 										tx: face/text either none! = type [
@@ -1642,54 +1270,30 @@ tbl: [
 									cell:  face/extra/cell   ; This is draw-cell address
 									draw-cell: face/extra/table/draw/(cell/y)/(cell/x)
 									switch/default table-face/col-type/(addr2/x) [
-										logic! [draw-cell/11/3: form either tx [table-face/true-char][table-face/false-char]]
-										draw   [draw-cell/11:   compose/only [translate (draw-cell/9) (tx)]]
+										logic! [
+											;-- draw-cell/11/3: form either tx [table-face/true-char][table-face/false-char]
+											either any [
+												addr/x = table-face/frozen/x
+												addr/y = table-face/frozen/y
+											][
+												;-- allowing frozen/header cell to be modified with plain text
+												draw-cell/11/3: to-string face/data
+											][
+												draw-cell/11/3: form either tx [table-face/true-char][table-face/false-char]	
+											]
+										]
+										draw   [
+											draw-cell/11:   compose/only [translate (draw-cell/9) (tx)]
+										]
 										image! [if attempt [image? img: load tx] [draw-cell/11: compose [image (img) (draw-cell/9)]]]
 										do     [draw-cell/11/3: form do tx]
 										icon   [
 											if all [
-												1 < length? i: split get-table-cell table-face addr/y addr/x #"/"
+												1 < length? i: split table-face/table-data/(addr/y)/(addr/x) #"/"
 												image? ico: get-icon/type i/1 i/2 i/3
 											][
 												draw-cell/11: compose [image (ico) (draw-cell/9)]
 											]
-										]
-										; Enhanced cell types - update rendered content
-										checkbox [
-											config: get-cell-config table-face addr/x
-											label: any [config/label ""]
-											p0: 0x0
-											p1: draw-cell/7 - draw-cell/6
-											draw-cell/11: compose/only [translate (draw-cell/9) (draw-checkbox p0 p1 tx label)]
-										]
-										radio [
-											config: get-cell-config table-face addr/x
-											options: any [config/options ["A" "B" "C"]]
-											p0: 0x0
-											p1: draw-cell/7 - draw-cell/6
-											draw-cell/11: compose/only [translate (draw-cell/9) (draw-radio p0 p1 options tx)]
-										]
-										dropdown [
-											config: get-cell-config table-face addr/x
-											options: any [config/options ["Option 1" "Option 2" "Option 3"]]
-											p0: 0x0
-											p1: draw-cell/7 - draw-cell/6
-											draw-cell/11: compose/only [translate (draw-cell/9) (draw-dropdown p0 p1 options tx)]
-										]
-										slider [
-											config: get-cell-config table-face addr/x
-											min-val: any [config/min 0]
-											max-val: any [config/max 100]
-											p0: 0x0
-											p1: draw-cell/7 - draw-cell/6
-											draw-cell/11: compose/only [translate (draw-cell/9) (draw-slider p0 p1 tx min-val max-val)]
-										]
-										rating [
-											config: get-cell-config table-face addr/x
-											max-stars: any [config/max-stars 5]
-											p0: 0x0
-											p1: draw-cell/7 - draw-cell/6
-											draw-cell/11: compose/only [translate (draw-cell/9) (draw-rating p0 p1 tx max-stars)]
 										]
 									][draw-cell/11/3: tx]
 									;Update virtual rows and cols
@@ -1793,7 +1397,7 @@ tbl: [
 			ofs [pair!] 
 			sz [pair!] 
 			txt [string!]
-			/with with-char [char!]
+			/with with-char [char! string!]
 		][
 			if with [ 
 				txt: copy to-string with-char
@@ -1861,14 +1465,9 @@ tbl: [
 				old-type: face/col-type/:col
 				face/col-type/:col: type: either event? event [event/picked][typ]
 				data: face/table-data
-				data-index: 1
 				forall data [
 					either block? data/1 [
-						; Skip header row (first row) and frozen rows
-						if all [
-							data-index > 1  ; Skip first row (header)
-							not find face/frozen-rows data-index
-						][
+						if not find face/frozen-rows index? data [
 							data/1/:col: switch/default type [
 								draw do     [to block! any [data/1/:col face/dummy]]
 								load image! [load any [data/1/:col face/dummy]]
@@ -1878,158 +1477,24 @@ tbl: [
 										all [series? data/1/:col empty? data/1/:col][
 											data/1/:col: false                          ; Empty series -> false
 										]
-										logic? data/1/:col []                            ; It's logic! already, do nothing
+										logic? data/1/col []                            ; It's logic! already, do nothing
 										all [string? data/1/:col  val: get/any to-word data/1/:col][
 											data/1/:col: either logic? val [val][false] ; Textual logic values get mapped
 										]
-										none? data/1/:col [data/1/:col: false]
+										none? data/1:col [data/1/:col: false]
 										'else [data/1/:col: true]                       ; Should it be false instead?
 									]
 								]
 								icon [form any [data/1/:col face/dummy]]
-								; Enhanced cell types - set default values
-								checkbox [
-									; Convert checkbox data (debug prints removed to prevent console popup)
-									result: case [
-										logic? data/1/:col [data/1/:col]  ; Already a logic value
-										all [word? data/1/:col data/1/:col = 'true] [true]   ; Word 'true -> true
-										all [word? data/1/:col data/1/:col = 'false] [false] ; Word 'false -> false
-										all [string? data/1/:col find ["Yes" "yes" "TRUE" "true" "1" "checked"] data/1/:col] [true]  ; String true values
-										all [string? data/1/:col find ["No" "no" "FALSE" "false" "0" "unchecked"] data/1/:col] [false] ; String false values
-										'else [false]  ; Default to false for any other value
-									]
-									result
-								]
-								radio [
-									; Convert text to option index for radio buttons
-									case [
-										integer? data/1/:col [data/1/:col]  ; Already an index
-										string? data/1/:col [
-											; Try to match text to option index
-											config: get-cell-config face col
-											options: any [config/options ["Low" "Med" "High"]]
-											index: 0
-											repeat i length? options [
-												if data/1/:col = options/:i [index: i break]
-											]
-											index
-										]
-										'else [0]
-									]
-								]
-								dropdown [
-									; Convert text to option index for dropdowns  
-									case [
-										integer? data/1/:col [data/1/:col]  ; Already an index
-										string? data/1/:col [
-											; Try to match text to option index
-											config: get-cell-config face col
-											options: any [config/options ["Fast" "Normal" "Slow"]]
-											index: 0
-											repeat i length? options [
-												if data/1/:col = options/:i [index: i break]
-											]
-											index
-										]
-										'else [0]
-									]
-								]
-								slider [
-									; Convert text to numeric value for sliders
-									case [
-										number? data/1/:col [data/1/:col]  ; Already a number
-										string? data/1/:col [
-											; Try to extract number from percentage string
-											val: copy data/1/:col
-											replace val "%" ""  ; Remove % sign
-											attempt [to-integer val]
-										]
-										'else [0]
-									]
-								]
-								rating [
-									; Convert text to rating value
-									case [
-										number? data/1/:col [data/1/:col]  ; Already a number
-										string? data/1/:col [
-											; Convert text ratings to numeric values
-											switch data/1/:col [
-												"Poor" "Bad" [1]
-												"Fair" "OK" [2] 
-												"Good" "Average" [3]
-												"Great" "Very Good" [4]
-												"Excellent" "Outstanding" "Perfect" [5]
-											]
-										]
-										'else [0]
-									]
-								]
-							][
-								; For enhanced types, don't try to convert with 'to'
-								either find [checkbox radio dropdown slider rating] type [
-									data/1/:col  ; Keep existing value as-is for enhanced types
 							][
 								attempt [to reduce type any [data/1/:col face/dummy]]
 							]
 						]
-						]
-						data-index: data-index + 1
 					][break]
 				]
 				face/table-data: data
 			]
 			if not only [fill face]
-		]
-
-		set-col-readonly: function [face [object!] event [event! integer!]][
-			col: either integer? event [event][get-col-number face event]
-			if col > 0 [
-				face/read-only-cols/:col: true
-				; Only update display if table is fully initialized
-				if all [face/draw not empty? face/draw] [
-					fill face
-					show-marks face
-				]
-			]
-		]
-
-		unset-col-readonly: function [face [object!] event [event! integer!]][
-			col: either integer? event [event][get-col-number face event]
-			if col > 0 [
-				remove/key face/read-only-cols col
-				; Only update display if table is fully initialized
-				if all [face/draw not empty? face/draw] [
-					fill face
-					show-marks face
-				]
-			]
-		]
-
-		add-color-rule: function [face [object!] rule [block!]][
-			"Add an auto-color rule. Format: [type condition color]"
-			append face/auto-color-rules rule
-			if all [face/draw not empty? face/draw] [
-				fill face
-				show-marks face
-			]
-		]
-
-		clear-color-rules: function [face [object!]][
-			"Clear all auto-color rules"
-			clear face/auto-color-rules
-			if all [face/draw not empty? face/draw] [
-				fill face
-				show-marks face
-			]
-		]
-
-		set-color-function: function [face [object!] func [function! none!]][
-			"Set custom color function: func [value data-x data-y][return color or none]"
-			face/auto-color-func: func
-			if all [face/draw not empty? face/draw] [
-				fill face
-				show-marks face
-			]
 		]
 
 		hide-row: function [face [object!] event [event! integer!]][
@@ -3119,7 +2584,8 @@ tbl: [
 			event [event! none!]
 			/feed fed-key [word!]
 		][
-
+			abs-pos: face/pos/y + face/current/y - face/frozen/y
+			
 			if feed [
 				event: object [ 
 					shift?: #(false)
@@ -3130,16 +2596,57 @@ tbl: [
 			]
 			
 			key: event/key
+			within-view?: #(false)
+			if all [ 
+				key = 'page-down
+				face/pos/y = face/frozen/y 
+			][	;-- current position is sitting on a frozen row
+				face/actors/hot-keys/feed face #(none) 'down
+			]
+			
+			if all [ 
+				key = 'page-down
+				( face/pos/y + face/current/y - face/frozen/y ) = face/total/y 
+			][
+				exit									;-- at end of file 
+			]
+			
 			step: switch key [
 				down      [0x1]
 				up        [0x-1]
 				left      [-1x0]
 				right     [1x0]
 				page-up   [as-pair 0 negate face/grid/y]
-				page-down [as-pair 0 face/grid/y]
+				page-down [
+					either ( face/pos/y + face/grid/y + face/current/y - face/frozen/y ) >= face/total/y [
+						test-step: as-pair 0 (face/total/y - (face/pos/y + face/current/y - face/frozen/y))
+						new-pos: min (abs-pos + test-step/y) face/total/y
+						within-view: in-view face
+						if between? new-pos within-view [
+							within-view?: true 
+						]
+						test-step
+					][
+						as-pair 0 face/grid/y ; ORIGINAL	
+					]
+				]
 				home      [as-pair negate face/grid/x 0]
 				end       [as-pair face/grid/x 0]
 			]
+			frozen-y-adj: either all [
+				face/perfect-fit/2
+				face/pos/y = face/usable-grid/y
+				face/active/y + 1 = face/total/y
+			][ 
+				0	
+			][ 
+				face/frozen/y 
+			]
+;									
+	
+			
+			abs-pos: face/pos/y + face/current/y - face/frozen/y
+			
 			either all [face/active step] [
 				case [
 					; Active mark beyond edge
@@ -3186,24 +2693,32 @@ tbl: [
 						false
 					]
 					; Active mark on edge
-
 					dim: case [
 						any [
 							all [
 									key = 'down
 									y <> 'done
-									(min (face/active/y + 1) face/total/y) > min (face/current/y + face/max-usable/y - face/frozen/y) face/total/y
-								]
+									(face/active/y + 1) <= face/total/y
+									face/grid = face/max-grid 
+									;-- (min (face/active/y + 1) face/total/y) > min (face/current/y + face/usable-grid/y - face/frozen/y) face/total/y
+									(min (face/active/y + 1) face/total/y) > min (face/current/y + face/usable-grid/y - frozen-y-adj) face/total/y
+									
+							]
 							all [key = 'up face/frozen/y + 1 = face/pos/y y <> 'done]
-							all [find [page-up page-down] key face/pos/y > face/frozen/y y <> 'done]
-							;-- all [find [page-up page-down] key face/pos/y >= face/frozen/y y <> 'done]
+							all [
+								find [page-up page-down] key 
+								not within-view?
+								y <> 'done
+							]
 						][
 							
 							
 							df: scroll face 'y step/y
 							switch key [
 								page-up   [if step/y < step/y: df [face/pos/y: face/pos/y - face/grid/y - step/y]]
-								page-down [if step/y > step/y: df [face/pos/y: face/pos/y + face/grid/y - step/y]]
+								page-down [
+									if step/y > step/y: df [face/pos/y: face/pos/y + face/grid/y - step/y]
+								]
 							]
 							'y
 						]
@@ -3268,48 +2783,36 @@ tbl: [
 					switch key [
 						#"C" [copy-selected face]
 						#"X" [copy-selected/cut face]
-						#"V" [paste-selected face]
+						#"V" [
+								if not to-logic face/options/read-only [
+									paste-selected face
+								]
+							 ]
 					]
 				][
-					switch key [
-						#"^M" [
-							direction: either find event/flags 'shift [ 'up ] [ 'down ]
-							face/actors/hot-keys/feed face #(none) direction 							
-						]
-						#" " [
-							; Space key - toggle enhanced cell types
-							col-type: face/col-type/(face/pos/x)
-							if any [col-type = 'checkbox col-type = 'logic!] [
-								data-addr: as-pair face/pos/x (face/current/y + face/pos/y - face/frozen/y)
-								if all [
-									data-addr/y <= length? face/table-data
-									data-addr/x <= length? face/table-data/(data-addr/y)
-								][
-									current-value: face/table-data/(data-addr/y)/(data-addr/x)
-									new-value: either logic? current-value [not current-value][
-										either col-type = 'checkbox [true][false]
-									]
-									face/table-data/(data-addr/y)/(data-addr/x): new-value
-									fill face
-								]
+					if not to-logic face/options/read-only [
+						switch key [
+							#"^M" [	;-- enter
+								direction: either find event/flags 'shift [ 'up ] [ 'down ]
+								face/actors/hot-keys/feed face #(none) direction 							
 							]
+							F2 [
+								unless face/tbl-editor [make-editor face]
+								show-editor/edit-mode face face/pos
+							]
+							delete [
+								face/table-data/(face/pos/y)/(face/pos/x): copy ""
+								fill face
+							]				
+							#"^H" [ ;-- Backspace
+								unless face/tbl-editor [make-editor face]
+								show-editor/with face face/pos ""
+							]		
 						]
-						F2 [
+						if ky: to-valid-key event/key event/flags [ 	
 							unless face/tbl-editor [make-editor face]
-							show-editor/edit-mode face face/pos
+							show-editor/with face face/pos ky
 						]
-						delete [
-							face/table-data/(face/pos/y)/(face/pos/x): copy ""
-							fill face
-						]				
-						#"^H" [ ;-- Backspace
-							unless face/tbl-editor [make-editor face]
-							show-editor/with face face/pos ""
-						]												
-					]
-					if ky: to-valid-key event/key event/flags [ 	
-						unless face/tbl-editor [make-editor face]
-						show-editor/with face face/pos ky
 					]
 				]
 			]
@@ -3327,19 +2830,6 @@ tbl: [
 				;force-state     [use-state/force face]
 				clear-color     [clear face/colors fill face]
 				forget-names    [forget-names face none]
-
-				; AUTO COLOR
-				add-negative-rule   [add-color-rule face [value negative red]]
-				add-positive-rule   [add-color-rule face [value positive green]]
-				add-zero-rule       [add-color-rule face [value zero gray]]
-				add-high-rule       [add-color-rule face [range 100 999999 yellow]]
-				add-error-rule      [add-color-rule face [text "Error" red]]
-				add-custom-range    [
-					if rule: ask "Enter custom rule (e.g., [range 50 100 yellow]):" [
-						add-color-rule face load rule
-					]
-				]
-				clear-auto-colors   [clear-color-rules face]
 
 				open-big        [open-big-table face]
 
@@ -3423,98 +2913,8 @@ tbl: [
 				integer! float! percent!
 				string! char! block!
 				date! time! logic!
-				image! tuple!
-				checkbox radio dropdown slider rating   [set-col-type face event]
+				image! tuple!   [set-col-type face event]
 
-				set-col-readonly   [set-col-readonly face event]
-				unset-col-readonly [unset-col-readonly face event]
-				
-				; COLUMN AUTO COLOR
-				add-col-negative-rule [
-					col: get-col-number face event
-					add-color-rule face compose [col-value (col) negative red]
-				]
-				add-col-positive-rule [
-					col: get-col-number face event
-					add-color-rule face compose [col-value (col) positive green]
-				]
-				add-col-zero-rule [
-					col: get-col-number face event
-					add-color-rule face compose [col-value (col) zero gray]
-				]
-				add-col-high-rule [
-					col: get-col-number face event
-					add-color-rule face compose [col-range (col) 100 999999 yellow]
-				]
-				add-col-error-rule [
-					col: get-col-number face event
-					add-color-rule face compose [col-text (col) "Error" red]
-				]
-				add-col-custom-range [
-					col: get-col-number face event
-					if rule: ask "Enter column rule (e.g., [col-range 2 50 100 yellow]):" [
-						; Replace first element with actual column number
-						parsed-rule: load rule
-						parsed-rule/2: col
-						add-color-rule face parsed-rule
-					]
-				]
-				clear-col-auto-colors [
-					col: get-col-number face event
-					; Remove all rules for this column
-					new-rules: copy []
-					i: 1
-					while [i <= length? face/auto-color-rules] [
-						rule-type: face/auto-color-rules/:i
-						switch/default rule-type [
-							col-value col-range col-text [
-								; Check if this rule is for the current column
-								either i + 1 <= length? face/auto-color-rules [
-									target-col: face/auto-color-rules/(i + 1)
-									either target-col = col [
-										; Skip this rule - it's for the column we're clearing
-										switch rule-type [
-											col-value [i: i + 4]
-											col-text  [i: i + 4]
-											col-range [i: i + 5]
-										]
-									][
-										; Keep this rule - it's for a different column
-										switch rule-type [
-											col-value col-text [
-												repeat j 4 [append new-rules face/auto-color-rules/(i + j - 1)]
-												i: i + 4
-											]
-											col-range [
-												repeat j 5 [append new-rules face/auto-color-rules/(i + j - 1)]
-												i: i + 5
-											]
-										]
-									]
-								][
-									i: i + 1
-								]
-							]
-						][
-							; Keep non-column-specific rules
-							switch rule-type [
-								value text [
-									repeat j 3 [append new-rules face/auto-color-rules/(i + j - 1)]
-									i: i + 3
-								]
-								range [
-									repeat j 4 [append new-rules face/auto-color-rules/(i + j - 1)]
-									i: i + 4
-								]
-							]
-						]
-					]
-					clear face/auto-color-rules
-					append face/auto-color-rules new-rules
-					fill face
-					show-marks face
-				]
-				
 				set-default     [set-default face event]
 
 				; SELECTION
@@ -3655,11 +3055,6 @@ tbl: [
 				face/col-type: clear face/col-type
 			]
 			if opts/defaults [face/defaults: to-map opts/defaults]
-			if opts/read-only-cols [face/read-only-cols: to-map opts/read-only-cols]
-			if opts/auto-color-rules [
-				clear face/auto-color-rules
-				append face/auto-color-rules opts/auto-color-rules
-			]
 
 			face/box: any [opts/box face/default-box]
 			face/top: case/all [
@@ -3787,8 +3182,6 @@ tbl: [
 				auto-col:    (face/options/auto-col)
 				auto-row:    (face/options/auto-row)
 				col-type:    (body-of face/col-type)
-				read-only-cols: (body-of face/read-only-cols)
-				auto-color-rules: (face/auto-color-rules)
 				selected:    (face/selected)
 				anchor:      (face/anchor)
 				active:      (face/active)
@@ -3907,136 +3300,13 @@ tbl: [
 					fill face
 				]
 				true [
-					; Mouse click handling (debug prints removed to prevent console popup)
-					address: get-data-address face event
-					
 					if all [
 						face/same-offset?
-						address
+						if none? address: get-data-address face event [ exit ]
+						face/col-type/(address/x) = 'logic!
 					][
-						; Skip header row interaction for enhanced cell types  
-						if address/y = 1 [
-							exit
-						]
-						
-						; Handle enhanced cell types and logic! cells
-						col-type: face/col-type/(address/x)
-						switch/default col-type [
-							logic! [
 						face/table-data/(address/y)/(address/x): not face/table-data/(address/y)/(address/x)
 						fill face
-					]
-							checkbox [
-								current-value: face/table-data/(address/y)/(address/x)
-								new-value: either logic? current-value [not current-value][true]
-								face/table-data/(address/y)/(address/x): new-value
-								fill face
-							]
-							radio [
-								config: get-cell-config face address/x
-								options: any [config/options ["A" "B" "C"]]
-								option-count: length? options
-								if option-count > 0 [
-									current-value: face/table-data/(address/y)/(address/x)
-									current-index: either integer? current-value [current-value][0]
-									; Cycle to next option (1, 2, 3, 1, 2, 3...)
-									new-index: either current-index >= option-count [1][current-index + 1]
-									face/table-data/(address/y)/(address/x): new-index
-									fill face
-								]
-							]
-							dropdown [
-								config: get-cell-config face address/x
-								options: any [config/options ["Option 1" "Option 2" "Option 3"]]
-								current-value: face/table-data/(address/y)/(address/x)
-								current-index: either integer? current-value [current-value][1]
-								current-text: either all [current-index > 0 current-index <= length? options] [options/:current-index]["--"]
-								
-								; Simple dropdown using direct view
-								current-display: rejoin ["Current: " current-text]
-								selected-option: none
-								view/flags compose [
-									title "Select Option"
-									below
-									text (current-display)
-									button 150 "Fast" [selected-option: 1 unview]
-									button 150 "Normal" [selected-option: 2 unview] 
-									button 150 "Slow" [selected-option: 3 unview]
-									button 150 "Cancel" [selected-option: none unview]
-								] [modal]
-								
-								; Apply selection
-								if selected-option [
-									face/table-data/(address/y)/(address/x): selected-option
-									fill face
-								]
-							]
-							slider [
-								config: get-cell-config face address/x
-								min-val: any [config/min 0]
-								max-val: any [config/max 100]
-								current-value: face/table-data/(address/y)/(address/x)
-								current-num: either number? current-value [current-value][min-val]
-								
-								; Get cell bounds to calculate precise click position
-								cell-bounds: get-cell-bounds face address
-								if cell-bounds [
-									click-x: event/offset/x
-									cell-start-x: cell-bounds/1/x + 4  ; Margin
-									cell-end-x: cell-bounds/2/x - 4
-									cell-width: cell-end-x - cell-start-x
-									
-									; Calculate new value based on click position
-									if cell-width > 0 [
-										normalized: (click-x - cell-start-x) / cell-width
-										normalized: max 0 min 1 normalized
-										new-value: min-val + (normalized * (max-val - min-val))
-										new-value: round/to new-value 0.01
-										face/table-data/(address/y)/(address/x): new-value
-										fill face
-									]
-								]
-							]
-							rating [
-								config: get-cell-config face address/x
-								max-stars: any [config/max-stars 5]
-								current-value: face/table-data/(address/y)/(address/x)
-								current-rating: either number? current-value [to-integer current-value][0]
-								
-								; Get cell bounds to calculate which star was clicked
-								cell-bounds: get-cell-bounds face address
-								if cell-bounds [
-									click-x: event/offset/x
-									cell-start-x: cell-bounds/1/x + 6  ; Margin
-									cell-width: cell-bounds/2/x - cell-bounds/1/x
-									
-									; Use same spacing calculation as draw function
-									star-size: min 14 (cell-width - 12) / max-stars
-									star-spacing: star-size + 2
-									
-									; More accurate star detection
-									relative-x: click-x - cell-start-x
-									star-index: to-integer (relative-x / star-spacing) + 1
-									star-index: max 1 min max-stars star-index
-									
-									; Extra validation - ensure we're actually in a star area
-									star-center-x: (star-index - 1) * star-spacing + (star-spacing / 2)
-									distance-from-center: absolute (relative-x - star-center-x)
-									
-									; Improved rating logic: click star to set, click same star again to clear
-									new-rating: star-index
-									if star-index = current-rating [
-										; If clicking the same star, clear the rating
-										new-rating: 0
-									]
-									
-									face/table-data/(address/y)/(address/x): new-rating
-									fill face
-								]
-							]
-						][
-							; Default case - no action for unknown types
-						]
 					]
 				]
 			]
@@ -4087,10 +3357,6 @@ tbl: [
 		]
 
 		on-menu: function [face [object!] event [event! none!]][do-menu face event]
-		
-		; External Data Bridge Functions -- removed for now 29-JUN-2025
-		;-- functions setup-external-source set-external-source get-external-data
-
 	]
 ]
 
@@ -4114,21 +3380,16 @@ on-table-tab-handler: func [
 	]
 	
 ]
-insert-event-func 'on-table-tab-handler :on-table-tab-handler
+insert-event-func 'on-table-tab-handler :on-table-tab-handler 
 
-; Global wrapper functions for auto-color
-add-color-rule: func [face [object!] rule [block!]][
-	face/actors/add-color-rule face rule
+between?: func [ val apair ] [
+	return either all [ (val >= apair/x) (val <= apair/y) ] [
+		true
+	][
+		false
+	]
 ]
-
-clear-color-rules: func [face [object!]][
-	face/actors/clear-color-rules face
-]
-
-set-color-function: func [face [object!] func [function! none!]][
-	face/actors/set-color-function face func
-] 
-
+        
 style/init 'table tbl [
 	face: self
 	face/actors/on-create: func [face [object!] event [event! none!]]  ;-- allows template to operate as a style. 
@@ -4136,241 +3397,4 @@ style/init 'table tbl [
 			frozen-nums/x: frozen-cols
 			frozen-nums/y: frozen-rows					
 		]
-]
-
-to-valid-key: function [ 
-	key 
-	flags
-][
-	if not char? key [ return none ]
-	if find charset [#" " - #"~"] key [
-		if find flags 'shift [
-			if fnd: system/words/select rejoin [ "`~1!2@3#4$5%6^^7&8*9(0)-_=+[{]}\|;:,<.>/?" {'"}]  key [
-				return fnd
-			]
-		]
-		return key
-	]
-]	
-
-; Enhanced cell type renderers
-draw-checkbox: function [
-	p0 [pair!] "Top-left corner"
-	p1 [pair!] "Bottom-right corner"  
-	checked? [logic!] "Checkbox state"
-	label [string!] "Optional label"
-][
-	center-offset: p1 - p0
-	center: p0 + (as-pair to-integer center-offset/x / 2 to-integer center-offset/y / 2)
-	box-size: 12
-	half-box: to-integer box-size / 2
-	box-p0: center - (as-pair half-box half-box)
-	box-p1: center + (as-pair half-box half-box)
-	
-	compose [
-		line-width 1
-		pen black
-		box (box-p0) (box-p1)
-		(either checked? [
-			compose [
-				line-width 2
-				pen black
-				; Draw X pattern - top-left to bottom-right
-				line (box-p0 + 3x3) (box-p1 - 3x3)
-				; Draw X pattern - top-right to bottom-left  
-				line (as-pair box-p1/x - 3 box-p0/y + 3) (as-pair box-p0/x + 3 box-p1/y - 3)
-			]
-		][
-			[]
-		])
-		(either not empty? label [
-			compose [pen black text (box-p1 + 5x-3) (label)]
-		][
-			[]
-		])
-	]
-]
-
-draw-radio: function [
-	p0 [pair!] "Top-left corner"
-	p1 [pair!] "Bottom-right corner"
-	options [block!] "List of options"
-	selected [integer!] "Selected index (1-based, 0 = none)"
-][
-	width: p1/x - p0/x
-	height: p1/y - p0/y
-	
-	; Calculate layout
-	option-count: length? options
-	if option-count = 0 [return []]
-	
-	; Simple horizontal layout for now
-	item-width: width / option-count
-	radius: 6
-	
-	result: copy []
-	repeat i option-count [
-		x-pos: to-integer p0/x + ((i - 1) * item-width) + (item-width / 2)
-		y-pos: to-integer p0/y + (height / 2)
-		center: as-pair x-pos y-pos
-		
-		; Draw circle
-		append result compose [
-			line-width 1
-			pen black
-			circle (center) (radius)
-		]
-		
-		; Fill if selected
-		if selected = i [
-			append result compose [
-				fill-pen black
-				circle (center) (radius - 2)
-			]
-		]
-		
-		; Add label below circle
-		label: form options/:i
-		append result compose [
-			pen black
-			text (center + 0x10) (label)
-		]
-	]
-	result
-]
-
-draw-dropdown: function [
-	p0 [pair!] "Top-left corner"
-	p1 [pair!] "Bottom-right corner"
-	options [block!] "List of options"
-	selected [integer!] "Selected index (1-based, 0 = none)"
-][
-	; Draw dropdown box
-	text-val: either all [selected > 0 selected <= length? options][
-		form options/:selected
-	][
-		"--"
-	]
-	
-	arrow-size: 8
-	arrow-x: to-integer p1/x - arrow-size - 4
-	arrow-y: to-integer p0/y + ((p1/y - p0/y) / 2)
-	
-	compose [
-		line-width 1
-		pen black
-		box (p0) (p1)
-		text (p0 + 4x2) (text-val)
-		; Draw dropdown arrow
-		line (as-pair arrow-x arrow-y - 3) (as-pair arrow-x + 4 arrow-y + 3)
-		line (as-pair arrow-x + 8 arrow-y - 3) (as-pair arrow-x + 4 arrow-y + 3)
-	]
-]
-
-draw-slider: function [
-	p0 [pair!] "Top-left corner"
-	p1 [pair!] "Bottom-right corner"
-	value [number!] "Current value"
-	min-val [number!] "Minimum value"
-	max-val [number!] "Maximum value"
-][
-	; Calculate slider dimensions
-	margin: 4
-	track-y: p0/y + ((p1/y - p0/y) / 2)
-	track-start: p0/x + margin
-	track-end: p1/x - margin
-	track-width: track-end - track-start
-	
-	; Calculate thumb position
-	if max-val <= min-val [max-val: min-val + 1]  ; Prevent division by zero
-	normalized: (value - min-val) / (max-val - min-val)
-	normalized: max 0 min 1 normalized  ; Clamp to 0-1
-	thumb-x: track-start + (normalized * track-width)
-	
-	compose [
-		line-width 2
-		pen gray
-		line (as-pair track-start track-y) (as-pair track-end track-y)
-		line-width 1
-		pen black
-		fill-pen white
-		circle (as-pair thumb-x track-y) 4
-		pen black
-		text (p0 + 4x-15) (form round/to value 0.01)
-	]
-]
-
-draw-rating: function [
-	p0 [pair!] "Top-left corner"
-	p1 [pair!] "Bottom-right corner"
-	rating [number!] "Rating value (0-5)"
-	max-stars [integer!] "Maximum number of stars"
-][
-	width: p1/x - p0/x
-	height: p1/y - p0/y
-	
-	star-size: min 14 (width - 12) / max-stars  ; Better sizing
-	start-x: p0/x + 6
-	star-y: p0/y + (height / 2)
-	
-	result: copy []
-	repeat i max-stars [
-		x-pos: start-x + ((i - 1) * (star-size + 2))  ; Consistent spacing
-		center: as-pair x-pos star-y
-		
-		; Determine if star should be filled
-		filled?: rating >= i
-		
-		; Better star shape - 5-pointed star
-		outer-radius: star-size / 2
-		inner-radius: outer-radius * 0.4
-		
-		; Calculate star points (5-pointed star)
-		points: copy []
-		repeat angle 10 [
-			a: (angle - 1) * 36 - 90  ; Start from top
-			radius: either odd? angle [outer-radius][inner-radius]
-			x: center/x + (radius * cosine a)
-			y: center/y + (radius * sine a)
-			append points as-pair to-integer x to-integer y
-		]
-		
-		append result compose [
-			line-width 1
-			pen black
-			(either filled? [
-				compose [
-					fill-pen gold
-					pen gold
-					polygon (points)
-				]
-			][
-				compose [
-					fill-pen white
-					polygon (points)
-				]
-			])
-		]
-	]
-	
-	; Add rating text
-	append result compose [
-		pen black
-		text (p1 + -20x-15) (rejoin [rating "/" max-stars])
-	]
-	
-	result
-]
-
-; Configuration helpers for enhanced cell types
-set-cell-config: function [face [object!] col [integer!] config [block!]][
-	"Set configuration for enhanced cell types"
-	if col > 0 [
-		face/cell-configs/:col: config
-	]
-]
-
-get-cell-config: function [face [object!] col [integer!]][
-	"Get configuration for enhanced cell types"
-	any [face/cell-configs/:col []]
 ]	

@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 Changes that deviate from the initial project are documented in reverse chronological order below. 
 
+### 11-JUL-2025 Modification: 87
+- Removed features added in Mod. 86 (to be added back later)
+- Modify cursoring at edges to display properly
+
+
 ### 29-JUN-2025 Modification: 86
 - @kavina computers starts adding features
 - Added enhanced cell types of: checkbox, radio, dropdown, slider and rating
