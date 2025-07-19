@@ -3,10 +3,9 @@ Red [
 	author: {@toomasv  custom fork by: @mikeyaunish and @kavina computers}
 	file: %table-template.red
 	git-url: https://github.com/mikeyaunish/table-template
-	modification: 89
-	date: 18-JUL-2025
+	modification: 90
+	date: 19-JUL-2025
 ]
-
 #include %style.red
 #include %re.red
 ~: make op! func [a b][re a b]
@@ -2824,7 +2823,8 @@ tbl: [
 								show-editor/edit-mode face face/pos
 							]
 							delete [
-								face/table-data/(face/pos/y)/(face/pos/x): copy ""
+								data-addr: get-data-address face face/pos
+								face/table-data/(data-addr/y)/(data-addr/x): copy ""
 								fill face
 							]				
 							#"^H" [ ;-- Backspace

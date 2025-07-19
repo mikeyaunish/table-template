@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 Changes that deviate from the initial project are documented in reverse chronological order below. 
 
+### 19-JUL-2025 Modification: 90
+- Fix which cell delete key acts on
+
 ### 18-JUL-2025 Modification: 89
 - Rewrite set-usable and in-view functions to support more accurate cursor movements
 
