@@ -3,8 +3,8 @@ Red [
 	author: {@toomasv  custom fork by: @mikeyaunish and @kavina computers}
 	file: %table-template.red
 	git-url: https://github.com/mikeyaunish/table-template
-	modification: 87
-	date: 11-JUL-2025
+	modification: 89
+	date: 18-JUL-2025
 ]
 
 #include %style.red
@@ -102,7 +102,8 @@ tbl: [
 	usable-grid: 0x0
 	max-grid: 0x0
 	perfect-fit: [ #(false) #(false) ]
-	
+	data-fit: make map! [x: #(none) y: #(none)]
+		
 	edit-mode?: #(false)
 
 	menu: [
@@ -223,13 +224,30 @@ tbl: [
 		]
 	]
 	actors: [
+		is-within-view?: function [ 
+			face [object! ]
+			step [pair!]
+		][
+			abs-row: face/pos/y + face/current/y - face/frozen/y
+			new-pos: min (abs-row + step/y) face/total/y
+			in-view-pair: in-view face
+			return either between? new-pos in-view-pair [
+				true 
+			][
+				false
+			]
+		]
 		
-		in-view: function [ face [object!] ][ 
-			perfect-adj: either face/perfect-fit/2 [ 0 ][ 1 ] 
-			in-view-start: face/current/y + face/frozen/y
-			in-view-end: min (in-view-start + face/max-grid/y - perfect-adj - face/frozen/y) face/total/y
-			return to-pair reduce [ in-view-start in-view-end ]
+		in-view: function [ 
+			face [object!] 
+			"Returns absolute row numbers that are in view, as a pair. Excludes frozen rows"
+		][ 
+			y-adj: either face/data-fit/y = 'outside  [ 1 ][ 0 ]
+			in-view-start: face/current/y + 1
+			in-view-end: min (in-view-start + face/max-grid/y - y-adj - 1 ) face/total/y
+			return to-pair reduce [ in-view-start max in-view-end in-view-start ]
 		]		
+
 		
 		to-valid-key: function [ 
 			key 
@@ -272,42 +290,39 @@ tbl: [
 			either border = 0x0 [false][border]
 		]
 
-		set-usable: function [
-				face [object!]
-				/local grid-size
+		set-usable: function [ 
+			{Sets usable-grid and data-fit to reflect current table state}
+			face [ object! ]	
 		][
-			grid-size: face/size - face/scroller-width ;-- bare bones grid-size without frozen
-			foreach dim [x y][
-				over-run: #(false)
+			grid-size: face/size - face/scroller-width
+			foreach dim [ x y ][
+				sz: 0		
+				repeat ndx face/frozen/:dim [	;-- collect frozen sizes first
+					sz: to-integer (sz + get-size face dim face/index/:dim/:ndx)
+				]
 				cur: face/current/:dim
-				i: k: sz: 0
+				i: k: 0 
+				over-run: #(false)
 				if 0 < steps: face/total/:dim - cur [
 					repeat i steps [
-						j: cur + i
+						j: cur + i	
 						sz: to-integer (sz + get-size face dim face/index/:dim/:j)
 						if sz >= grid-size/:dim [
 							over-run: #(true)
-							either sz > grid-size/:dim [
-								i: i - 1
+							either sz = grid-size/:dim [
+								dta-fit: 'perfect
 							][
-								element: either dim = 'x [ 1 ][ 2]
-								face/perfect-fit/:element: #(true)
+								dta-fit: 'outside
+								i: i - 1
 							]
 							break
 						]
 					]
 				]
-				
-				if not over-run [ 
-					if face/current/:dim = face/frozen/:dim [
-						i: i + face/frozen/:dim 
-						if i = face/total/:dim [
-							i: i - face/frozen/:dim
-						]
-					]
-				]
-				face/usable-grid/:dim: i
+				face/data-fit/:dim: either over-run [ dta-fit ] [ 'inside ]
+				face/usable-grid/:dim: i + face/frozen/:dim
 			]
+			
 		]
 
 		set-grid: function [face [object!]][
@@ -2505,7 +2520,11 @@ tbl: [
 			]
 		]
 
-		select-row: function [face [object!] event [event! integer!] /add][
+		select-row: function [
+			face [object!] 
+			event [event! integer!] 
+			/add
+		][
 			ri: which-index face event 'row
 			unless add [clear face/selected]
 			repend face/selected [as-pair 1 ri '- as-pair face/total/x ri]
@@ -2584,7 +2603,7 @@ tbl: [
 			event [event! none!]
 			/feed fed-key [word!]
 		][
-			abs-pos: face/pos/y + face/current/y - face/frozen/y
+			abs-row: face/pos/y + face/current/y - face/frozen/y
 			
 			if feed [
 				event: object [ 
@@ -2593,6 +2612,14 @@ tbl: [
 					flags: []
 					key: fed-key
 				]
+			]
+			if all [
+				event/key = #" "
+				find event/flags 'shift 
+			][
+				abs-row: face/pos/y + face/current/y - face/frozen/y
+				select-row face abs-row
+				exit
 			]
 			
 			key: event/key
@@ -2620,11 +2647,8 @@ tbl: [
 				page-down [
 					either ( face/pos/y + face/grid/y + face/current/y - face/frozen/y ) >= face/total/y [
 						test-step: as-pair 0 (face/total/y - (face/pos/y + face/current/y - face/frozen/y))
-						new-pos: min (abs-pos + test-step/y) face/total/y
-						within-view: in-view face
-						if between? new-pos within-view [
-							within-view?: true 
-						]
+						new-pos: min (abs-row + test-step/y) face/total/y
+						within-view?: is-within-view? face test-step
 						test-step
 					][
 						as-pair 0 face/grid/y ; ORIGINAL	
@@ -2642,10 +2666,8 @@ tbl: [
 			][ 
 				face/frozen/y 
 			]
-;									
-	
-			
-			abs-pos: face/pos/y + face/current/y - face/frozen/y
+
+
 			
 			either all [face/active step] [
 				case [
@@ -2699,10 +2721,7 @@ tbl: [
 									key = 'down
 									y <> 'done
 									(face/active/y + 1) <= face/total/y
-									face/grid = face/max-grid 
-									;-- (min (face/active/y + 1) face/total/y) > min (face/current/y + face/usable-grid/y - face/frozen/y) face/total/y
 									(min (face/active/y + 1) face/total/y) > min (face/current/y + face/usable-grid/y - frozen-y-adj) face/total/y
-									
 							]
 							all [key = 'up face/frozen/y + 1 = face/pos/y y <> 'done]
 							all [
@@ -2788,6 +2807,10 @@ tbl: [
 									paste-selected face
 								]
 							 ]
+						#" " [
+							abs-col: face/pos/x + face/current/x - face/frozen/x
+							select-col face abs-col
+						]
 					]
 				][
 					if not to-logic face/options/read-only [
@@ -3389,6 +3412,8 @@ between?: func [ val apair ] [
 		false
 	]
 ]
+
+
         
 style/init 'table tbl [
 	face: self

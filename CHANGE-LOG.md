@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 Changes that deviate from the initial project are documented in reverse chronological order below. 
 
+### 18-JUL-2025 Modification: 89
+- Rewrite set-usable and in-view functions to support more accurate cursor movements
+
+### 14-JUL-2025 Modification: 88
+- Fix scrolling off end of table when columns larger than view
+- Add Ctrl+Space = Select Column and Shift+Space = Select Row
+
 ### 11-JUL-2025 Modification: 87
 - Removed features added in Mod. 86 (to be added back later)
 - Modify cursoring at edges to display properly

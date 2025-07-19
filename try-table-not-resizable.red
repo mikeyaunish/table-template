@@ -1,5 +1,4 @@
 Red [Needs: 'View]
-set 'dprint func [{FAKE DPRINT} /each /deep /table /name /data /track /columns ][]
 #include %table-template.red
 
 
