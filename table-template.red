@@ -3,8 +3,8 @@ Red [
 	author: {@toomasv  custom fork by: @mikeyaunish and @kavina computers}
 	file: %table-template.red
 	git-url: https://github.com/mikeyaunish/table-template
-	modification: 90
-	date: 19-JUL-2025
+	version: 0.091
+	date: 24-JUL-2025
 ]
 #include %style.red
 #include %re.red
@@ -14,6 +14,8 @@ tbl: [
 	size: 317x217
 	color: silver
 	flags: [scrollable all-over]
+	version: 0.091
+	identifier: "table-template"
 	scroller: 			make map! 1
 	index: 				make map! 2
 	pos: 				make block! 1
@@ -100,7 +102,6 @@ tbl: [
 	scroller-width: 17
 	usable-grid: 0x0
 	max-grid: 0x0
-	perfect-fit: [ #(false) #(false) ]
 	data-fit: make map! [x: #(none) y: #(none)]
 		
 	edit-mode?: #(false)
@@ -2657,7 +2658,7 @@ tbl: [
 				end       [as-pair face/grid/x 0]
 			]
 			frozen-y-adj: either all [
-				face/perfect-fit/2
+				face/data-fit/y = 'perfect
 				face/pos/y = face/usable-grid/y
 				face/active/y + 1 = face/total/y
 			][ 
@@ -3388,7 +3389,12 @@ on-table-tab-handler: func [
     event [event!]
 ][
 	if all [
-		(event/key = #"^-") ((event/type = 'key-down))
+		event/key = #"^-"
+		event/type = 'key-down
+		any [
+			(select face 'identifier ) = "table-template"
+			find face/extra 'on-table-tab
+		]
 	][
 		direction: either find event/flags 'shift [ 'left ] [ 'right ]
 		either find face/extra 'on-table-tab [
