@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 Changes that deviate from the initial project are documented in reverse chronological order below. 
 
+### 4-AUG-2025 Version: 0.093
+- Add 'change-state' flag to be used with 'on-change' to determine 'before and 'after changes.
+
 ### 4-AUG-2025 Version: 0.092
 - Add ability to use on-click and on-change
 - on-change happens on a double-click of a cell 

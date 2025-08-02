@@ -3,7 +3,7 @@ Red [
 	author: {@toomasv  custom fork by: @mikeyaunish and @kavina computers}
 	file: %table-template.red
 	git-url: https://github.com/mikeyaunish/table-template
-	version: 0.092
+	version: 0.093
 	date: 2-AUG-2025
 ]
 #include %style.red
@@ -14,7 +14,7 @@ tbl: [
 	size: 317x217
 	color: silver
 	flags: [scrollable all-over]
-	version: 0.092
+	version: 0.093
 	identifier: "table-template"
 	scroller: 			make map! 1
 	index: 				make map! 2
@@ -105,7 +105,8 @@ tbl: [
 	data-fit: make map! [x: #(none) y: #(none)]
 		
 	edit-mode?: #(false)
-
+	change-state: 'before 
+	
 	menu: [
 		"Cell" [
 			"Freeze"   freeze-cell
@@ -1044,18 +1045,27 @@ tbl: [
 							update-data face (table)
 							set-focus face/extra/table
 							direction: either find event/flags 'shift[ 'up ] [ 'down ]
+							face/extra/table/change-state: 'after
+							do-actor face/extra/table none 'change
+							face/extra/table/change-state: 'before
 							face/extra/table/actors/hot-keys/feed face/extra/table #(none) direction
 						]
 						#"^[" [ ;esc
 							append clear face/text face/options/text
 							face/visible?: no
 							set-focus face/extra/table
+							face/extra/table/change-state: 'after
+							do-actor face/extra/table none 'change
+							face/extra/table/change-state: 'before							
 						]
 						down  [
 							;-- show-editor face/extra/table face/extra/cell + 0x1
 							face/visible?: no
 							update-data face (table)
 							set-focus face/extra/table
+							face/extra/table/change-state: 'after
+							do-actor face/extra/table none 'change
+							face/extra/table/change-state: 'before	
 							face/extra/table/actors/hot-keys/feed face/extra/table #(none) 'down
 						]
 						up [
@@ -1063,6 +1073,9 @@ tbl: [
 							face/visible?: no
 							update-data face (table)
 							set-focus face/extra/table
+							face/extra/table/change-state: 'after
+							do-actor face/extra/table none 'change
+							face/extra/table/change-state: 'before
 							face/extra/table/actors/hot-keys/feed face/extra/table #(none) 'up
 						]
 						left [
@@ -1070,6 +1083,9 @@ tbl: [
 								face/visible?: no
 								update-data face (table)
 								set-focus face/extra/table
+								face/extra/table/change-state: 'after
+								do-actor face/extra/table none 'change
+								face/extra/table/change-state: 'before	
 								face/extra/table/actors/hot-keys/feed face/extra/table #(none) 'left
 							]
 						]
@@ -1078,6 +1094,9 @@ tbl: [
 								face/visible?: no
 								update-data face (table)
 								set-focus face/extra/table
+								face/extra/table/change-state: 'after
+								do-actor face/extra/table none 'change
+								face/extra/table/change-state: 'before									
 								face/extra/table/actors/hot-keys/feed face/extra/table none 'right
 							]
 						]
@@ -2821,19 +2840,23 @@ tbl: [
 							]
 							F2 [
 								unless face/tbl-editor [make-editor face]
+								do-actor face none 'change
 								show-editor/edit-mode face face/pos
 							]
 							delete [
 								data-addr: get-data-address face face/pos
+								do-actor face none 'change
 								face/table-data/(data-addr/y)/(data-addr/x): copy ""
 								fill face
 							]				
 							#"^H" [ ;-- Backspace
 								unless face/tbl-editor [make-editor face]
+								do-actor face none 'change
 								show-editor/with face face/pos ""
 							]		
 						]
 						if ky: to-valid-key event/key event/flags [ 	
+							do-actor face none 'change
 							unless face/tbl-editor [make-editor face]
 							show-editor/with face face/pos ky
 						]
@@ -3396,16 +3419,20 @@ on-table-tab-handler: func [
 	if all [
 		(event/key = #"^-")
 		(event/type = 'key-down)
-		;any [
-		;	(select face 'identifier ) = "table-template"
-		;	find face/extra 'on-table-tab
-		;]
+		any [
+			(select face 'identifier ) = "table-template"
+			find face/extra 'on-table-tab
+		]
 	][
 		direction: either find event/flags 'shift [ 'left ] [ 'right ]
 		either find face/extra 'on-table-tab [
 			face/visible?: no
 			face/extra/table/actors/update-data face face/extra/table
 			set-focus face/extra/table			
+			face/extra/table/change-state: 'after
+			do-actor face/extra/table none 'change
+			face/extra/table/change-state: 'before
+
 			face/extra/table/actors/hot-keys/feed face/extra/table none direction
 		][
 			face/actors/hot-keys/feed face none direction 
