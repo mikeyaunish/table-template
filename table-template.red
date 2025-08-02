@@ -3,8 +3,8 @@ Red [
 	author: {@toomasv  custom fork by: @mikeyaunish and @kavina computers}
 	file: %table-template.red
 	git-url: https://github.com/mikeyaunish/table-template
-	version: 0.091
-	date: 24-JUL-2025
+	version: 0.092
+	date: 2-AUG-2025
 ]
 #include %style.red
 #include %re.red
@@ -14,7 +14,7 @@ tbl: [
 	size: 317x217
 	color: silver
 	flags: [scrollable all-over]
-	version: 0.091
+	version: 0.092
 	identifier: "table-template"
 	scroller: 			make map! 1
 	index: 				make map! 2
@@ -3298,7 +3298,11 @@ tbl: [
 					]
 				]
 			]
+			do-actor face none 'click 
 		]
+		
+		on-click: function [face [object!] event [event! none!]][]
+		on-change: function [face [object!] event [event! none!]][]
 
 		on-unfocus: func [face [object!]][
 			hide-editor face
@@ -3338,6 +3342,7 @@ tbl: [
 		]
 		
 		on-dbl-click: function [face [object!] event [event! none!]][
+			do-actor face none 'change
 			use-editor/edit-mode face event
 		]
 
@@ -3389,12 +3394,12 @@ on-table-tab-handler: func [
     event [event!]
 ][
 	if all [
-		event/key = #"^-"
-		event/type = 'key-down
-		any [
-			(select face 'identifier ) = "table-template"
-			find face/extra 'on-table-tab
-		]
+		(event/key = #"^-")
+		(event/type = 'key-down)
+		;any [
+		;	(select face 'identifier ) = "table-template"
+		;	find face/extra 'on-table-tab
+		;]
 	][
 		direction: either find event/flags 'shift [ 'left ] [ 'right ]
 		either find face/extra 'on-table-tab [

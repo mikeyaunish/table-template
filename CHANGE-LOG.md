@@ -3,7 +3,11 @@
 All notable changes to this project will be documented in this file.
 Changes that deviate from the initial project are documented in reverse chronological order below. 
 
-### 19-JUL-2025 Version: 0.091 
+### 4-AUG-2025 Version: 0.092
+- Add ability to use on-click and on-change
+- on-change happens on a double-click of a cell 
+
+### 23-JUL-2025 Version: 0.091 
 - Add version and identifier numbers
 - Fix tab handling
 
