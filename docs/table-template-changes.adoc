@@ -1,0 +1,357 @@
+= Changes Between table-template.red Version 0.093 and Version 0.107
+
+== Overview
+
+This document details all changes between the older version: 0.093 (3820 lines) and the newer version: 0.107(6554 lines). The newer version has significantly expanded functionality with approximately 2734 additional lines of code.
+
+== Major Additions
+
+=== New Functions
+
+==== Video/Display Decor Management
+* `remove-vid-col-decor` - Removes video column decorations
+* `clear-vid-decor` - Clears all video decorations from a face
+
+==== Column Management Enhancements
+* `place-pre-buit-col` - Places pre-built columns with overlay configuration
+* `make-overlay-config` - Creates overlay configuration for pre-built columns
+* `step-num-keys` - Steps up or down numeric keys in a map based on comparator
+* `step-item-vals` - Steps item values in a series based on comparator
+
+==== Virtual Column Support
+* Enhanced virtual column handling with code and VID overlays
+* `set-virt-col-code` - Sets virtual column code
+* `set-virt-col-vid` - Sets virtual column VID
+
+==== Overlay System
+* New overlay configuration system for cells
+* Support for code-repeating and vid-repeating overlays
+* Pre-built overlay types including:
+  * `cell-checkbox-for-row-selection`
+  * `cell-button`
+  * `cell-code-example`
+  * `data-checkbox-for-logic`
+  * `data-drop-list`
+
+==== File Format Support
+* `open-red-type-table` - Enhanced file opening with support for `.redtbl` format
+* `save-redtbl` - Saves tables in binary `.redtbl` format
+* `recast-none` - Converts 'none words to #(none) for proper serialization
+
+==== Multi-line Editor
+* `multi-line-editor` - New multi-line cell editing capability
+* `advanced-cell-edit` - Advanced cell editing functionality
+
+==== Update Functions
+* `update-vid-cell` - Updates VID cell values
+
+=== New Menu Options
+
+==== Column Operations
+* `insert-pre-built-col` - Insert pre-built column
+* `append-pre-built-col` - Append pre-built column
+* `set-virt-col-code` - Set virtual column code
+* `set-virt-col-vid` - Set virtual column VID
+* `edit-overlay` - Edit overlay
+* `remove-overlay` - Remove overlay
+* `set-overlay-vid` - Set overlay VID
+* `set-overlay-code` - Set overlay code
+* `set-align-left` - Set column alignment left
+* `set-align-center` - Set column alignment center
+* `set-align-right` - Set column alignment right
+* `set-col-read-only` - Set column to read-only
+* `set-col-read-write` - Set column to read-write
+* `set-row-read-only` - Set row to read-only
+* `set-row-read-write` - Set row to read-write
+
+==== Default Value Management
+* `set-default` - Set default value
+* `remove-default` - Remove default value
+* `set-default-auto-incr` - Set default with auto-increment
+
+==== Cell Editing
+* `edit-cell-multi-line` - Multi-line cell editor
+
+==== Table Information
+* `show-table-details` - Shows table details
+* `set-column-names` - Sets column names
+
+== Function Modifications
+
+=== Column Operations
+
+==== `insert-col`
+* Added `/ret-col-num` refinement to return column number
+* Added call to `clear-vid-decor` before insertion
+* Changed column index assignment to use `get-max` function
+* Added visibility control for `-target-vid-object-`
+
+==== `append-col`
+* Added `/ret-col-num` refinement to return column number
+* Changed column index assignment to use `get-max` function
+
+==== `delete-col`
+* Major refactoring with enhanced cleanup:
+  * Removes from `col-type`, `vid-overlays`, `read-only-cols`
+  * Calls `remove-vid-col-decor/delete` and `clear-vid-decor`
+  * Clears overlay for deleted column
+  * Handles virtual columns separately
+  * Uses new `step-num-keys` and `step-item-vals` functions for index adjustment
+  * Removes from `auto-incr` array
+  * Removes from `defaults` map
+  * Cleans up `vid-state` for virtual columns
+
+==== `insert-virtual-col`
+* Added call to `clear-vid-decor`
+
+==== `append-virtual-col`
+* Added `refresh-view` call
+
+=== Selection Management
+
+==== `mark-active`
+* Changed from `face/selected` to `face/cells-selected`
+* Updated all references throughout the function
+
+==== `unmark-active`
+* Changed from `face/selected` to `face/cells-selected`
+
+==== `show-marks`
+* Changed from `face/selected` to `face/cells-selected`
+* Updated all parsing logic to use new field name
+
+==== `color-selected`
+* Changed from `face/selected` to `face/cells-selected`
+
+==== `name-selected`
+* Changed from `face/selected` to `face/cells-selected`
+
+==== `copy-selected`
+* Changed from `face/selected` to `face/cells-selected`
+* Changed `face/selected-range` to use `face/cells-selected`
+
+==== `paste-selected`
+* Changed from `face/selected` to `face/cells-selected`
+* Added read-only check before pasting
+
+==== `parse-selection`
+* Updated to work with new selection structure
+
+=== File Operations
+
+==== `open-red-table` → `open-red-type-table`
+* Function renamed and significantly enhanced
+* Added `/redtbl` refinement for binary format support
+* Added support for loading `.redbin` files
+* Added handling for:
+  * `read-only-rows`
+  * `read-only-cols`
+  * `auto-incr`
+  * `col-names`
+  * `virtual-cols`
+  * `vid-state`
+  * `vid-overlays`
+  * `code-overlays`
+  * `defaults`
+  * `col-align`
+* Changed `face/selected` to `face/cells-selected`
+* Added `recast-none` call for proper none handling
+* Enhanced virtual column loading from `.redbin` files
+
+==== `open-table`
+* Added file filter support for multiple file types:
+  * "Red Table" `*.redtbl`
+  * "Red File" `*.red`
+  * "CSV" `*.csv`
+  * "All Files" `*.*`
+* Added support for `.redtbl` file format
+* Added `clear-table-state` call
+
+==== `open-big-table`
+* Added file filter support
+
+==== `save-red-table`
+* Added saving of `.redbin` file with extended metadata:
+  * `virtual-cols`
+  * `vid-state`
+  * `vid-overlays`
+  * `code-overlays`
+  * `defaults`
+  * `col-align`
+  * `col-names`
+
+==== `save-redtbl`
+* New function to save tables in binary `.redtbl` format
+
+==== `save-table`
+* Added support for `.redtbl` file format
+* Enhanced file type detection
+
+==== `save-table-as`
+* Added file filter support
+
+==== `save-state`
+* Added new fields to saved state:
+  * `cells-selected` (renamed from `selected`)
+  * `read-only-rows`
+  * `read-only-cols`
+  * `auto-incr`
+  * `col-names`
+* Removed `defaults` from saved state (now saved separately in `.redbin`)
+
+==== `use-state`
+* Added file filter support
+* Changed call from `open-red-table` to `open-red-type-table`
+
+=== Scrolling and Navigation
+
+==== `scroll`
+* Added `clear-vid-decor` call
+* Added visibility control for `-target-vid-object-`
+
+==== `move-col`
+* Added `clear-vid-decor` call
+
+=== Freeze/Unfreeze
+
+==== `freeze`
+* Added `clear-vid-decor` call
+* Added `fill` call
+
+==== `unfreeze`
+* Enhanced with better cleanup
+
+=== Event Handlers
+
+==== `do-over`
+* Major enhancement with VID target rendering:
+  * Added lazy rendering of VID cells on mouse over
+  * Checks `face/vid-targets` for cells that need rendering
+  * Dynamically renders VID cells when mouse enters their area
+  * Uses `set-vid-context` for proper context setting
+* Changed from `face/selected` to `face/cells-selected`
+
+==== `on-down`
+* Enhanced to handle pair events directly
+* Added better event handling
+
+==== `on-unfocus`
+* Added check for `tbl-editor` visibility before hiding
+
+==== `on-created`
+* Major refactoring:
+  * Added support for `.redtbl` file format
+  * Enhanced file type detection
+  * Better error handling for invalid data files
+  * Changed from `open-red-table` to `open-red-type-table`
+  * Added status message for invalid files
+
+== Data Structure Changes
+
+=== Face Object Fields
+
+==== Renamed Fields
+* `face/selected` → `face/cells-selected` (throughout codebase)
+
+==== New Fields Added
+* `face/overlay-config` - Configuration for pre-built overlays
+* `face/vid-targets` - Targets for VID cell rendering
+* `face/vid-renderer` - VID cell renderers
+* `face/vid-lib` - VID library
+* `face/freeform-vid` - Freeform VID definitions
+* `face/read-only-rows` - Read-only row indices
+* `face/read-only-cols` - Read-only column indices
+* `face/auto-incr` - Auto-increment configurations
+* `face/col-names` - Column names
+* `face/col-align` - Column alignment settings
+* `face/virtual-cols` - Virtual column definitions
+* `face/vid-state` - VID state information
+* `face/vid-overlays` - VID overlay configurations
+* `face/code-overlays` - Code overlay configurations
+* `face/defaults` - Default value map (moved to separate storage)
+
+=== Global Variables
+
+* `-target-vid-object-` - Target VID object for rendering
+* `-vid-code-` - VID code context
+* `table-obj` - Global table object reference
+* `virtual-cols` - Global virtual columns reference
+
+== File Format Changes
+
+=== New File Format: `.redtbl`
+Binary format that includes:
+* `options` - Table options
+* `table-data` - Table data
+* `virtual-cols` - Virtual columns
+* `vid-state` - VID state
+* `vid-overlays` - VID overlays
+* `code-overlays` - Code overlays
+* `defaults` - Default values
+* `col-align` - Column alignment
+
+=== Enhanced `.red` Format
+Now saves companion `.redbin` file with extended metadata:
+* Virtual columns
+* VID state and overlays
+* Code overlays
+* Defaults
+* Column alignment
+* Column names
+
+== Event Handler Changes
+
+=== `on-table-tab-handler` → `table-event-handler`
+* Function renamed
+* Added wheel event handling with disable option
+* Added tab key to key-down conversion option
+* Enhanced tab navigation between table and editor
+
+== Code Quality Improvements
+
+=== Error Handling
+* Better validation of file data
+* Status messages for invalid operations
+* Enhanced error handling in file operations
+
+=== Code Organization
+* Better separation of concerns
+* More modular function design
+* Enhanced state management
+
+=== Performance
+* Lazy rendering of VID cells
+* More efficient index management
+* Better memory management for large tables
+
+== Summary Statistics
+
+* **Total Lines**: 3820 → 6554 (+2734 lines, +71.6% increase)
+* **New Functions**: ~15+ major new functions
+* **Enhanced Functions**: ~30+ functions significantly modified
+* **New File Format**: `.redtbl` binary format added
+* **New Features**: Virtual columns, overlays, pre-built columns, multi-line editing, read-only support, auto-increment, column alignment, column names
+
+== Migration Notes
+
+When migrating from version 0.93 to the newer version:
+
+1. **Selection Field**: All code using `face/selected` should be updated to `face/cells-selected`
+2. **File Opening**: The `open-red-table` function has been renamed to `open-red-type-table`
+3. **New File Format**: Consider using `.redtbl` format for better performance and feature support
+4. **State Files**: State files now include additional fields; old state files may need migration
+5. **Virtual Columns**: New virtual column system requires understanding of VID overlays and code overlays
+6. **Read-Only Support**: New read-only row/column functionality available
+7. **Defaults**: Default values are now stored separately in binary format
+
+== Conclusion
+
+The newer version represents a significant evolution of the table template system, adding extensive support for:
+* Virtual columns with custom rendering
+* Overlay system for enhanced cell functionality
+* Pre-built column types
+* Enhanced file format support
+* Better state management
+* Improved user experience features
+
+The codebase has grown substantially while maintaining backward compatibility for basic table operations.

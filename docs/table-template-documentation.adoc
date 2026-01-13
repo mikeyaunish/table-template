@@ -1,0 +1,1417 @@
+= Table Template User Documentation
+:author: @toomasv, @mikeyaunish
+:version: 0.106
+:revdate: 7-Jan-2026
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+:source-highlighter: highlight.js
+
+== Introduction
+
+The Table Template is a comprehensive Red language table widget system that provides spreadsheet-like functionality with advanced features including cell editing, column overlays, virtual columns, sorting, filtering, freezing rows/columns, and much more.
+
+=== Overview
+
+The `table-template.red` file provides a complete table widget implementation for Red/View applications. It supports:
+
+* Data manipulation (insert, delete, move rows and columns)
+* Cell editing with multiple data types
+* Column overlays (VID widgets and code overlays)
+* Virtual columns with dynamic content
+* Row and column freezing
+* Sorting and filtering
+* Cell formatting and styling
+* Named ranges
+* State saving and loading
+* Keyboard navigation
+* Context menus
+
+=== Version Information
+
+* **Version:** 0.106
+* **Date:** 7-Jan-2026
+* **Repository:** https://github.com/mikeyaunish/table-template[GitHub]
+
+=== Dependencies
+
+The table template requires the following support scripts:
+
+* `table-template-support-scripts/style.red`
+* `table-template-support-scripts/re.red`
+* `table-template-support-scripts/to-valid-types.red`
+* `table-template-support-scripts/table-template-support-scripts.red`
+* `table-template-support-scripts/requesters.red`
+* `table-template-support-scripts/request-array.red`
+
+== Getting Started
+
+=== Basic Usage
+
+The table template is used as a VID style. To enable the table style, include the file:
+
+[source,red]
+----
+#include %table-template.red
+----
+
+After that, the table style can be used in layout. Here's a basic example:
+
+[source,red]
+----
+view [
+    table data [
+        ["Name" "Age" "City"]
+        ["John" 25 "New York"]
+        ["Jane" 30 "London"]
+    ]
+]
+----
+
+This creates an empty table with default size of 317x217 and grid 3x8. Default cell size is 100x25. Both vertical and horizontal scrollers are always included. Scrollers are 17 points thick.
+
+=== Specifying Table Size
+
+Specifying size for table will fill the extra space with additional cells:
+
+[source,red]
+----
+view [table 717x517]
+----
+
+This creates an empty table with 7x20 grid.
+
+=== Specifying Grid Size
+
+Grid size of table can be specified separately:
+
+[source,red]
+----
+view [table 717x517 data 10x50 options [auto-col: #(true)]]
+----
+
+This creates an empty table with 10 columns and 50 rows, but within the previous boundaries (717x517).
+
+When instead of grid size a block is presented as data, this block is interpreted as table data. The block should consist of row blocks of equal size:
+
+[source,red]
+----
+view [table 717x517 data [["" A B][1 "First Row"][2 "Second Row"]]]
+----
+
+Values are automatically formatted to be presented in the table.
+
+=== Using the `auto-col` option
+
+The table can be initialized with various options:
+
+[source,red]
+----
+view [
+    table data [
+        ["Header1" "Header2"]
+        ["Data1" "Data2"]
+    ] options [
+        auto-col: yes       ; Provides columns with automatic numbering
+    ]
+]
+----
+
+=== Using the `auto-save` option
+The table can also load data from a file and enable auto-save functionality:
+
+[source,red]
+----
+view [
+    table data %./data/simple-table.redtbl
+    options [
+        auto-save: yes      ; Auto-save to file
+    ]
+]
+----
+
+When `auto-save` is enabled, changes to the table are automatically saved to the source file. This is useful for maintaining data persistence, but note that this can slow down table operations, especially with large files.
+
+== Auto-Headers
+
+The table supports automatically indexed columns and/or rows.
+
+=== Auto-Indexed Columns
+
+It is possible to add an automatically indexed column to your table by specifying the corresponding option. When `auto-col` is set to `true`, an extra column will be created, automatically enumerated. By this, the original order of rows can be restored whenever necessary:
+
+[source,red]
+----
+view [table 717x517 data 10x50 options [auto-col: #(true)]]
+----
+
+=== Auto-Indexed Rows
+
+Both row and column headers can be specified in this manner:
+
+[source,red]
+----
+view [table 717x517 data 10x50 options [auto-col: #(true) auto-row: #(true)]]
+----
+
+Auto-generated headers refer to the position of the given row/col in original data. The index row/col itself has index 0.
+
+=== Sheet Mode
+The sheet mode is a special mode that allows you to create a table that is similar to a open blank spreadsheet.
+Another way to auto-generate indexes is by using the `sheet` option:
+
+[source,red]
+----
+view [table options [sheet: #(true)]]
+----
+
+* Headers generated with `sheet` option refer to the actual visual order of rows/cols, not to their order in original data
+* When sorting, headers generated with `sheet` option will not change, but headers generated with `auto-col` and `auto-row` will be reordered
+
+=== Loading from File
+
+The table can load data from `.red` or `.redtbl` files:
+
+[source,red]
+----
+view [
+    table data %mydata.red
+]
+----
+
+=== Loading from CSV Files
+
+Instead of giving data directly as a block, a file name or URL may be specified to be loaded as a table:
+
+[source,red]
+----
+view [
+    table 717x515 
+    data https://support.staffbase.com/hc/en-us/article_attachments/360009197011/username-password-recovery-code.csv 
+    options [delimiter: #";"]
+]
+----
+
+Non-standard delimiter (standard is comma) can currently be specified for URLs only.
+
+=== Loading from SQL Queries
+
+If you have set up SQLite, a data source may be specified as an SQL query. The 'chinook.db' can be found https://www.sqlitetutorial.net/wp-content/uploads/2018/03/chinook.zip[here].
+
+[source,red]
+----
+sql-query: func [sql][
+    out: copy ""
+    call/output rejoin [{sqlite3 -csv -header .\chinook.db "} sql {"}]  out
+    load/as out 'csv
+]
+view [
+    table 717x517 with [
+        data: sql-query "select TrackId, Name, Title, Composer from tracks inner join albums on tracks.AlbumID = albums.AlbumId"
+    ]
+]
+----
+
+== Core Concepts
+
+=== Data Structure
+
+The table data is stored in `face/table-data` as a block of blocks, where each inner block represents a row.
+
+[source,red]
+----
+table-data: [
+    ["Header1" "Header2" "Header3"]  ; Row 1 (often frozen as header)
+    ["Data1" "Data2" "Data3"]         ; Row 2
+    ["Data4" "Data5" "Data6"]         ; Row 3
+]
+----
+
+=== Coordinate Systems
+
+The table uses multiple coordinate systems:
+
+* **Data coordinates:** The actual row/column indices in `table-data`
+* **Draw coordinates:** The visual position on screen
+* **Index coordinates:** The position in the index arrays
+
+Functions are provided to convert between these systems:
+
+* `get-data-address` - Get data coordinates from event
+* `get-draw-address` - Get draw coordinates from event
+* `get-logic-address` - Convert draw to data coordinates
+
+=== Frozen Rows and Columns
+
+Frozen rows and columns remain visible when scrolling. They are typically used for headers.
+
+* Frozen rows are stored in `face/frozen-rows`
+* Frozen columns are stored in `face/frozen-cols`
+* The number of frozen rows/columns is in `face/frozen`
+
+== Menu System
+
+The table provides a comprehensive context menu system accessible via right-click.
+
+=== Cell Menu
+
+* **Freeze** - Freeze the cell's row and column
+* **Unfreeze** - Unfreeze the cell's row and column
+* **Edit** - Edit the cell (same as double-click)
+* **Multi-line Edit (Shift+F2)** - Open multi-line editor
+
+=== Row Menu
+
+==== Actions
+
+* **Select** - Select the entire row
+* **Hide** - Hide the row
+* **Unhide** - Unhide a hidden row
+* **Remove** - Remove row from index (can be restored)
+* **Restore** - Restore a removed row
+* **Delete** - Permanently delete row
+* **Insert Data Row** - Insert a new data row
+* **Append Data Row** - Append a new data row at the end
+* **Insert Virtual** - Insert a virtual row
+* **Append Virtual** - Append a virtual row
+
+==== Freeze
+
+* **Freeze** - Freeze the row
+* **Unfreeze** - Unfreeze the row
+
+==== Move
+
+* **Top** - Move row to top
+* **Up** - Move row up one position
+* **Down** - Move row down one position
+* **Bottom** - Move row to bottom
+* **By ...** - Move row by specified number of positions
+* **To ...** - Move row to specified position
+
+==== Other
+
+* **Default height** - Reset row to default height
+* **Find ...** - Find text in row
+* **Data Access**
+  ** **Read-Only** - Make row read-only
+  ** **Read-Write** - Make row read-write
+
+=== Column Menu
+
+==== Actions
+
+* **Select** - Select the entire column
+* **Default width** - Reset column to default width
+* **Full height** - Make column full height
+* **Hide** - Hide the column
+* **Unhide** - Unhide a hidden column
+* **Remove** - Remove column from index (can be restored)
+* **Restore** - Restore a removed column
+* **Delete** - Permanently delete column
+* **Insert Data Column** - Insert a new data column
+* **Append Data Column** - Append a new data column
+* **Insert Virtual Column** - Insert a virtual column
+* **Append Virtual Column** - Append a virtual column
+* **Insert Pre-Built Column** - Insert a pre-built column overlay
+* **Append Pre-Built Column** - Append a pre-built column overlay
+
+==== Overlay
+
+* **Apply Repeating VID** - Apply a VID overlay to the column
+* **Apply Repeating Code** - Apply a code overlay to the column
+* **Edit Overlay (Alt+F2)** - Edit the column overlay
+* **Remove Overlay** - Remove the column overlay
+
+==== Sort
+
+* **Loaded**
+  ** **Up** - Sort loaded data ascending
+  ** **Down** - Sort loaded data descending
+* **Up** - Sort ascending
+* **Down** - Sort descending
+* **Unsort** - Remove sorting
+
+==== Other
+
+* **Set Column Names** - Set names for columns
+* **Filter ...** - Apply filter to column
+* **Unfilter** - Remove filter
+* **Freeze** - Freeze the column
+* **Unfreeze** - Unfreeze the column
+* **Move** - Move column (First, Left, Right, Last, By ..., To ...)
+* **Find ...** - Find text in column
+* **Edit ...** - Edit column data
+* **Type** - Set column data type
+* **Alignment** - Set text alignment (Left, Center, Right)
+* **Data Access**
+  ** **Read-Only** - Make column read-only
+  ** **Read-Write** - Make column read-write
+* **Default**
+  ** **Value or Code** - Set default value or code
+  ** **Auto Increment** - Set auto-increment
+  ** **Remove** - Remove default
+
+=== Table Menu
+
+* **Unhide**
+  ** **All** - Unhide all rows and columns
+  ** **Row** - Unhide rows
+  ** **Column** - Unhide columns
+* **Default height** - Reset to default height
+* **Open ...** - Open table from file
+* **Open big ...** - Open large table file
+* **Save** - Save table to file
+* **Save as ...** - Save table with new name
+* **Use state ...** - Load table state
+* **Save state as ...** - Save table state
+* **Clear color** - Clear all cell colors
+* **Select named range** - Select a named range
+* **Forget names** - Remove named ranges
+* **Show Details** - Show table details
+
+=== Selection Menu
+
+* **Copy** - Copy selected cells
+* **Cut** - Cut selected cells
+* **Paste** - Paste cells
+* **Set Color** - Set color for selected cells
+* **Set Name** - Set name for selected range
+
+== Data Types
+
+The table supports the following data types for columns:
+
+* `block!` - Block data
+* `char!` - Character
+* `date!` - Date
+* `float!` - Floating point number
+* `image!` - Image
+* `integer!` - Integer
+* `logic!` - Boolean (true/false)
+* `percent!` - Percentage
+* `string!` - String
+* `time!` - Time
+* `tuple!` - Tuple
+
+Special types:
+
+* `load` - Load data from string
+* `draw` - Draw commands
+* `do` - Executable code
+* `icon` - Icon display
+
+[#_setting_column_type]
+=== Setting Column Type
+
+To set a column type, right-click on the column header and select:
+
+`Column > Type > [desired type]`
+
+When a column type is set, all data in that column is converted to the specified type. Any cells containing a data type that doesn't match are cleared out. If a row is frozen, it will remain unmodified.
+
+== Column Overlays
+
+Column overlays allow you to apply custom rendering or behavior to entire columns.
+
+=== VID Overlays
+
+VID overlays are used to apply VID Objects to each cell in a column. Cells with VID overlays are identified by green bars on the sides, indicating they behave differently than regular table data cells.
+
+VID overlays use the current cell data to create the VID object. All usable VID styles for data overlays begin with the `data-` prefix, while virtual column VID styles begin with the `cell-` prefix.
+
+Pre-built VID overlays include:
+
+* `data-drop-list` - Dropdown list populated from column data. This overlay is designed to be a read-only column, so that data isn't changed inconsistently with the drop-list.
+* `data-checkbox-for-logic` - Checkbox for logic values (true/false). Sorting is enabled when this overlay is used, using a custom sorting function where true = 1, false = 0, invalid = -1.
+* `cell-checkbox-for-row-selection` - Checkbox for row selection (used in virtual columns)
+* `cell-button` - Button in each cell (behaves just like a regular VID button object)
+
+=== Code Overlays
+
+Code overlays execute Red code for each cell. Pre-built code overlays include:
+
+* `cell-New-Code-Overlay` - Template for new code overlay
+* `cell-code-example` - Example code overlay
+* `cells-to-red-yellow-green` - Color coding based on values
+
+=== Applying Overlays
+
+To apply an overlay:
+
+1. Right-click on the column header
+2. Select `Column > Overlay`
+3. Choose `Apply Repeating VID` or `Apply Repeating Code`
+4. Select the overlay from the list
+
+=== Editing Overlays
+
+To edit an overlay:
+
+1. Right-click on the column header
+2. Select `Column > Overlay > Edit Overlay` (or press Alt+F2)
+3. Modify the overlay code in the editor
+
+**Note:** When editing a VID overlay (e.g., `cell-button`) and you change the text that displays on the button using F5 submit, if the cursor is on a rendered VID button already, that particular button may not be updated until all editing is finished.
+
+=== Removing Overlays
+
+To remove an overlay:
+
+1. Right-click on the column header
+2. Select `Column > Overlay > Remove Overlay`
+
+== Virtual Columns
+
+Virtual columns are columns that don't store data directly but compute values dynamically.
+
+=== Creating Virtual Columns
+
+Virtual columns can be created via:
+
+* `Column > Actions > Insert Virtual Column`
+* `Column > Actions > Append Virtual Column`
+
+=== Virtual Column Structure
+
+Virtual columns have the following structure:
+
+[source,red]
+----
+virtual-cols/:col-num: make object! [
+    id: "unique-id"
+    type: 'code
+    source: make map! []  ; Source data per row
+    code: make map! []    ; Code per row
+    data: make map! []    ; Computed data per row
+    default: none        ; Default code
+]
+----
+
+=== Virtual Column Types
+
+Virtual columns display with a red hue for identification. There are two types:
+
+==== Type 1: Code Virtual Columns
+
+Code virtual columns allow calculations within the cell using the `R<row-num>C<col-num>` cell referencing system. Cell contents are run as code with the result being the data displayed.
+
+==== Type 2: VID Virtual Columns
+
+VID virtual columns contain VID code in cells:
+
+* Valid VID styles begin with `cell-` prefix (e.g., `cell-button`)
+* First cell in column is reserved for heading text
+* Second cell in column contains VID code that will repeat and fill the rest of the column unless another cell below contains VID code
+
+=== Virtual Column Code
+
+Virtual column code can access:
+
+* `row-num` - Current row number
+* `col-num` - Current column number
+* `get-cell row col` - Get cell value
+* `get-row row` - Get entire row
+* `table-obj` - The table object
+
+=== RC Cell Referencing System
+
+Virtual columns support an easy cell referencing system:
+
+* `R2C2` - Direct cell data access (row 2, column 2)
+* `C2` - Access to specific column data in current row (column 2)
+* `R2` - Access to specific row data in current column (row 2)
+
+**Note:** Virtual columns count as a column but the data isn't directly accessible in the main table data structure.
+
+=== Custom Virtual Columns
+
+Custom virtual columns are pre-configured virtual columns:
+
+* `row-checkbox` - Used to select/deselect rows in a table. Has its own custom menu to allow context-related actions. Get all checked rows by:
++
+[source,red]
+----
+probe table-obj/actors/get-checked-rows table-obj <column-num>
+----
++
+Sorting is available for this type of column.
+
+== Sorting
+
+=== Basic Sorting
+
+Sorting is currently possible by a single column only. To sort a column:
+
+1. Right-click on the column header
+2. Select `Column > Sort > Up` or `Column > Sort > Down`
+
+The table is sorted from non-frozen rows downward. If the table is created from a CSV file, then all data is of type `string!`, and sorted accordingly.
+
+=== Loaded Data Sorting
+
+For data that needs to be loaded (e.g., from strings):
+
+1. Right-click on the column header
+2. Select `Column > Sort > Loaded > Up` or `Column > Sort > Loaded > Down`
+
+Alternatively, convert the column to a different type before sorting (see <<_setting_column_type>>).
+
+=== Restoring Original Order
+
+The only way to restore original order currently is to:
+
+* Sort by a column that holds the original order (e.g., with `options/auto-col` set to `true`)
+* Select "Unsort" from the menu
+
+=== Unsorting
+
+To remove sorting:
+
+1. Right-click on the column header
+2. Select `Column > Sort > Unsort`
+
+=== Sorting on True/False VID Overlay Columns
+
+Normally sorting against true/false cells can't be done directly. However, when using the `data-checkbox-for-logic` VID overlay, a customized sorting function is attached that enables sorting. The sorting pattern used is:
+
+* `true` = 1
+* `false` = 0
+* `invalid` = -1
+
+== Filtering
+
+=== Applying Filters
+
+To filter a column:
+
+1. Right-click on the column header
+2. Select `Column > Filter ...`
+3. Enter filter criteria
+
+Filtering is currently possible by a single column at a time only. As with sorting, only non-frozen rows are considered.
+
+==== Filter Criteria Format
+
+There is a special format for filter criteria:
+
+* It may start with an operator, e.g., `< 100` (provided data is of corresponding type - see type changing)
+* It may start with a function name expecting data as its first argument, but without specifying this argument, e.g., `find charset [#"a" #"e" #"i" #"o" #"u"]`. The missing argument will be inserted automatically
+* Code may start also with a solitary set-word, which will reference data in the edited field (but it should not be specified). So you can use the word in further code, e.g., `string-field: all [find string-field #"a" 20 < length? string-field]`
+
+==== Regex Support
+
+There is a very limited basic regex function `~` for compact comparison of strings, e.g., `~ "^^2"` is ~same as `parse [#"2" to end]`.
+
+**Note:** Repeated filtering will consider already filtered rows only (but it is buggy).
+
+=== Removing Filters
+
+To remove a filter:
+
+1. Right-click on the column header
+2. Select `Column > Unfilter`
+
+== Freezing Rows and Columns
+
+Freezing keeps rows or columns visible while scrolling.
+
+=== Freezing Rows
+
+To freeze a row:
+
+1. Right-click on the row
+2. Select `Row > Freeze`
+
+To unfreeze:
+
+1. Right-click on the row
+2. Select `Row > Unfreeze`
+
+=== Freezing Columns
+
+To freeze a column:
+
+1. Right-click on the column header
+2. Select `Column > Freeze`
+
+To unfreeze:
+
+1. Right-click on the column header
+2. Select `Column > Unfreeze`
+
+=== Freezing Cells
+
+To freeze both row and column at a cell:
+
+1. Right-click on the cell
+2. Select `Cell > Freeze`
+
+Frozen rows/columns are dark-colored. Freezing can be repeated, e.g., if the table is scrolled after previous freezing. "Unfreeze" removes all freezing correspondingly from cells/rows/columns. To unfreeze, it is not necessary to place the mouse on the corresponding row/column as when freezing.
+
+== Cell Editing
+
+=== Basic Editing
+
+Cell editing is activated with:
+
+* Double-click on a cell
+* Press Enter on a cell
+* Right-click and select `Cell > Edit` from the local menu
+
+Editing is committed with Enter.
+
+=== Edit Modes
+
+The table supports different edit modes based on cell type:
+
+* Text cells: Standard text editor
+* Logic cells: Toggle on click
+* Code cells: Code editor
+
+=== Default Values
+
+Columns can have default values that are applied to new cells:
+
+1. Right-click on the column header
+2. Select `Column > Default > Value or Code`
+3. Enter the default value or code
+
+=== Auto Increment
+
+For integer columns, you can set auto-increment:
+
+1. Right-click on the column header
+2. Select `Column > Default > Auto Increment`
+3. The column will automatically increment for new rows
+
+== Keyboard Navigation
+
+=== Movement Keys
+
+* `Arrow Keys` - Move one cell
+* `Page Up/Down` - Move one page
+* `Home` - Move to first column
+* `End` - Move to last column
+* `Tab` - Move to next cell
+* `Shift+Tab` - Move to previous cell
+
+=== Scrolling and Wheeling
+
+**Scrolling** will move the whole grid together with selection.
+
+**Wheeling** will scroll the table vertically by 3 rows. With Ctrl-down, it scrolls by a full page. Shift-wheel scrolls the table horizontally.
+
+=== Selection Behavior
+
+Navigation by keys moves **selection**, extending it with Shift-down. Moving selection outside of visual borders will automatically scroll the table if not at the end already. Selection is also moved by clicking on cells (if not on/near border), extending selection with Shift-down and/or Ctrl-down.
+
+=== Editing Keys
+
+* `F2` - Edit current cell
+* `Shift+F2` - Multi-line edit
+* `Alt+F2` - Edit column overlay
+* `Enter` - Confirm edit and move down
+* `Escape` - Cancel edit
+
+=== Selection Keys
+
+* `Shift+Space` - Select entire row
+* `Ctrl+Click` - Select multiple cells
+
+=== VID Cell Keyboard Actions
+
+For cells with VID overlays, special keyboard actions are available:
+
+* `F4` - Primary key used to interact with VID cells (toggle checkmarks, click buttons)
++
+For drop-down lists, F4 has special behavior:
++
+. Press F4 once: The VID cell becomes active and you can cursor up/down or press letters to select an item
+. Press F4 twice: Makes the entire list visible
++
+**Note:** If the mouse cursor is left hovering over a VID cell, this can interfere with the F4 key functionality. Just move the mouse pointer away from any VID cell if this happens.
+
+=== Copy/Paste Behavior
+
+Selected cells can be copied or cut, and then pasted in the same or different configuration:
+
+* If pasted when a single cell is selected, selection is pasted in the same configuration as it was copied
+* Otherwise, it is pasted in the order as cells are selected
+* The order of selection of original cells is also significant
+
+Copy/Paste is sequence sensitive. Selecting cells from left to right will put them into the clipboard in the order that you selected them.
+
+== File Operations
+
+=== Opening Files
+
+The table can open:
+
+* `.red` files - Red data format
+* `.redtbl` files - Binary table format
+
+To open a file:
+
+1. Right-click on the table
+2. Select `Table > Open ...`
+3. Choose the file
+
+=== Saving Files
+
+To save the table:
+
+1. Right-click on the table
+2. Select `Table > Save` (saves to current file) or `Table > Save as ...` (saves with new name)
+
+==== Saving as a .red File
+
+When you save a table as a `.red` file, a second file is also saved with the same filename but with a `.redbin` extension. This is made available as a transition format to allow existing 'old' `.red` files to still be loaded and saved, but now it includes the associated `.redbin` file.
+
+Saving these two files like this allows the user to save all configuration, overlay and customization data that is contained within the table. The original `.red` format only saved the data and some small number of configuration options.
+
+==== Saving as a .redtbl File
+
+This is the new table file format, which is essentially saving all data, customization, overlays etc. into one file. This file is in the redbin format. It can be opened and inspected using this Red code:
+
+[source,red]
+----
+redbin-data: load/as %table.redtbl 'redbin
+----
+
+=== State Files
+
+Table state includes:
+
+* Column widths and row heights
+* Frozen rows and columns
+* Column types
+* Overlays
+* Filters and sorting
+* Named ranges
+
+To save state:
+
+1. Right-click on the table
+2. Select `Table > Save state as ...`
+
+To load state:
+
+1. Right-click on the table
+2. Select `Table > Use state ...`
+
+== Named Ranges
+
+Named ranges allow you to assign names to cell ranges for easy reference.
+
+=== Creating Named Ranges
+
+1. Select a range of cells
+2. Right-click and select `Selection > Set Name`
+3. Enter a name for the range
+
+=== Using Named Ranges
+
+1. Right-click on the table
+2. Select `Table > Select named range`
+3. Choose the range from the list
+
+=== Removing Named Ranges
+
+1. Right-click on the table
+2. Select `Table > Forget names`
+
+== Cell Formatting
+
+=== Cell Colors
+
+To set cell color:
+
+1. Select cells
+2. Right-click and select `Selection > Set Color`
+3. Choose a color
+
+To clear colors:
+
+1. Right-click on the table
+2. Select `Table > Clear color`
+
+=== Text Alignment
+
+To set text alignment:
+
+1. Right-click on the column header
+2. Select `Column > Alignment > Left/Center/Right`
+
+=== Column Widths
+
+To set column width:
+
+* Drag the column border
+* Right-click and select `Column > Default width` to reset
+* If holding down Control while dragging, sizes of all following columns will be changed too
+* If Ctrl-dragging on the first column, the default size is changed
+
+=== Row Heights
+
+To set row height:
+
+* Drag the row border
+* Right-click and select `Row > Default height` to reset
+* If holding down Control while dragging, sizes of all following rows will be changed too
+* If Ctrl-dragging on the first row, the default size is changed
+
+== Column and Overlay Simplification
+
+The table template uses a simplified model with two main concepts:
+
+=== Two Kinds of Columns
+
+1. **Normal Data Columns** - Standard columns that store data in `table-data`
+2. **Virtual Columns** - Columns not part of the main table data, saved in a separate space. These display with a red hue for identification.
+
+=== Two Types of Overlays
+
+1. **VID Repeating** - VID objects displayed in the cell space. All usable VID styles for data overlays begin with `data-` prefix, while virtual column VID styles begin with `cell-` prefix.
+2. **Code Repeating** - Red code that is run and has final say as to how a cell appears in regards to value and background color.
+
+== Advanced Features
+
+=== Read-Only Cells
+
+To make cells read-only:
+
+* **Column:** Right-click column header > `Column > Data Access > Read-Only`
+* **Row:** Right-click row > `Row > Data Access > Read-Only`
+
+To make writable again:
+
+* **Column:** Right-click column header > `Column > Data Access > Read-Write`
+* **Row:** Right-click row > `Row > Data Access > Read-Write`
+
+=== Hiding Rows and Columns
+
+To hide:
+
+* **Row:** Right-click row > `Row > Actions > Hide`
+* **Column:** Right-click column header > `Column > Actions > Hide`
+
+To unhide:
+
+* **Row:** Right-click > `Table > Unhide > Row` or `Row > Actions > Unhide`
+* **Column:** Right-click > `Table > Unhide > Column` or `Column > Actions > Unhide`
+
+=== Moving Rows and Columns
+
+Rows and columns can be moved via drag-and-drop or menu:
+
+* **Drag:** Ctrl+Click and drag
+* **Menu:** Use `Row > Move` or `Column > Move` options
+
+=== Finding Data
+
+To find data:
+
+* **In row:** Right-click row > `Row > Find ...`
+* **In column:** Right-click column header > `Column > Find ...`
+
+== Column Editing
+
+Column editing can be activated from the local menu, opened on the column you are going to edit. The editing command is entered into a code window and has a special format:
+
+=== Column Edit Format
+
+In case of a single command, it takes a command with arguments, but with the main argument right after the command name omitted.
+
+For example, when you have opened a CSV file with one column as a formatted float, but with commas as thousand-separators, and you want to remove these commas before you can change the type of the column, then:
+
+1. Right-click on the column header
+2. Select `Column > Edit ...`
+3. Enter: `replace/all comma ""`
+
+The missing argument (the column data) will be inserted automatically.
+
+== Programming Interface
+
+=== Accessing Table Data
+
+[source,red]
+----
+; Get cell value
+value: face/table-data/:row/:col
+
+; Set cell value
+face/table-data/:row/:col: new-value
+
+; Get row
+row-data: face/table-data/:row
+
+; Get column (requires iteration)
+column-data: collect [
+    foreach row face/table-data [
+        keep row/:col
+    ]
+]
+----
+
+=== Event Handlers
+
+The table provides several event handlers:
+
+* `on-create` - Called when table is created
+* `on-created` - Called after table is fully initialized
+* `on-down` - Mouse down event
+* `on-up` - Mouse up event
+* `on-click` - Click event
+* `on-dbl-click` - Double-click event
+* `on-key-down` - Key press event
+* `on-menu` - Menu selection event
+* `on-scroll` - Scroll event
+* `on-wheel` - Mouse wheel event
+* `on-change` - Called when cell data changes
+
+==== Change State
+
+The table supports a before and after flag to indicate when cell data has changed. The `face/change-state` can be `'before` or `'after`, and `face/selected` contains the address of the changed cell.
+
+Example:
+
+[source,red]
+----
+view [
+    table1: table 400x200 data [
+        ["a" "b" "c"]
+        ["d" "e" "f"]
+    ] on-change [
+        print ["on-change state =" face/change-state " at =" face/selected]
+    ]
+]
+----
+
+=== Custom Functions
+
+You can access table functions via `face/actors`:
+
+[source,red]
+----
+; Fill/refresh the table
+face/actors/fill face
+
+; Get data address from event
+address: face/actors/get-data-address face event
+
+; Get column number
+col: face/actors/get-col-number face event
+
+; Get row number
+row: face/actors/get-row-number face event
+----
+
+=== Adding Custom Overlays
+
+To add a custom VID overlay:
+
+[source,red]
+----
+face/vid-lib/my-custom-overlay: make object! [
+    id: "my-custom-overlay"
+    vid: {text "Custom"}
+    code: [["code" "here"]]
+    datatype: "string"  ; Optional
+]
+----
+
+To add a custom code overlay:
+
+[source,red]
+----
+face/code-lib/my-custom-code: make object! [
+    id: "my-custom-code"
+    code: [["code" "here"]]
+    datatype: "string"  ; Optional
+]
+----
+
+=== Coding Within VID or Code Overlays
+
+When writing code within a VID or Code overlay, the following functions and variables are available:
+
+==== Cell Functions
+
+* `get-cell id` - Get cell value. `id` can be either a column number (integer!) or a column name string. **Note:** Column names need to be set first by using the menu item: "Column > Set Column Names".
+* `get-row <row-num>` - Get entire row data (integer!)
+* `set-cell-color <color>` - Set cell background color (tuple!)
+* `set-cell <val>` - Set cell value (any-type!)
+
+==== Variables
+
+* `this-cell` - Used to get the current cell value, as well as set the current cell value (doesn't affect actual data, but does affect how the data is displayed)
+* `row-num` - Current row number
+* `col-num` - Current column number
+* `table-obj` - Main object that gives full access to the entire table context
+* `table-obj/table-data` - Block providing easy access to all of the data in the current table
+
+==== VID Cell Specific
+
+All VID cell styles have `face/extra/addr` available to determine where the VID cell is located within the table data structure.
+
+==== Helper Functions
+
+The following type conversion functions are available:
+
+* `to-valid-file` - Convert to valid file!
+* `to-valid-integer` - Convert to valid integer!
+* `to-valid-logic` - Convert to valid logic!
+* `to-valid-pair` - Convert to valid pair!
+* `to-valid-string` - Convert to valid string!
+* `to-valid-tuple` - Convert to valid tuple!
+* `to-valid-money` - Convert to valid money (necessary with float calculations, rounds up to next cent)
+
+These functions are used internally to ensure that the data is valid and can be used in the table. They are also available for use in your own code.
+
+**Note:** In a virtual column, it is good practice to set all cells to something (even "") otherwise that cell will display "none".
+
+== Configuration Options
+
+=== Table Options
+
+The table accepts the following options:
+
+* `sheet: yes` - Enable spreadsheet mode
+* `auto-col: yes` - Auto-size columns
+* `auto-row: yes` - Auto-size rows
+* `auto-save: yes` - Auto-save to file (requires file data source) 
+**Note:** This is not very useful for large files. It can slow down table operations.
+* `config: [options]` - Configuration block
+
+=== Configuration Block
+
+The configuration block can contain:
+
+[source,red]
+----
+config: [
+    frozen-cols: [1 2]        ; Frozen column indices
+    frozen-rows: [1]         ; Frozen row indices
+    read-only-cols: [3]      ; Read-only column indices
+    read-only-rows: [2]      ; Read-only row indices
+    auto-incr: [4]           ; Auto-increment column indices
+    col-names: ["Name" "Age"] ; Column names
+    col-index: [1 2 3]      ; Column index order
+    row-index: [1 2 3]      ; Row index order
+    sizes: [                 ; Custom sizes
+        x: [100 200 150]    ; Column widths
+        y: [25 30 25]       ; Row heights
+    ]
+    col-type: [              ; Column types
+        1: 'string!
+        2: 'integer!
+    ]
+    defaults: [              ; Default values
+        1: "Default"
+        2: 0
+    ]
+]
+----
+
+== Troubleshooting
+
+=== Common Issues
+
+==== Table Not Displaying
+
+* Ensure all support scripts are in the correct directory
+* Check that data is properly formatted as a block of blocks
+* Verify the table style is properly initialized
+
+==== Overlays Not Working
+
+* Ensure column type matches overlay requirements
+* Check that overlay code is valid Red code
+* Verify overlay is properly registered in `vid-lib` or `code-lib`
+
+==== Sorting Issues
+
+* Ensure column data is of consistent type
+* For mixed types, use "Loaded" sort option
+* Check that frozen rows are not included in sort
+
+==== Performance Issues
+
+* For large tables, consider using virtual columns
+* Disable auto-sizing for better performance
+* Use filtering instead of loading all data
+
+=== Error Messages
+
+==== "path json-body/id: is not valid for none! type"
+
+This error occurs when trying to set a path on a `none` value. Ensure that objects are properly initialized before setting paths.
+
+==== "Column Type needs to be set"
+
+Some operations require a column type to be set first. Set the column type via `Column > Type`.
+
+== Examples
+
+=== Basic Table
+
+[source,red]
+----
+view [
+    title "Basic Table"
+    table data [
+        ["Name" "Age" "City"]
+        ["John" 25 "New York"]
+        ["Jane" 30 "London"]
+        ["Bob" 35 "Paris"]
+    ]
+]
+----
+
+=== Table with Frozen Header
+
+[source,red]
+----
+view [
+    title "Table with Frozen Header"
+    table data [
+        ["Name" "Age" "City"]
+        ["John" 25 "New York"]
+        ["Jane" 30 "London"]
+    ] options [
+        config: [
+            frozen-rows: [1]
+        ]
+    ]
+]
+----
+
+=== Table with Dropdown Column
+
+[source,red]
+----
+view [
+    title "Table with Dropdown"
+    table data [
+        ["Name" "Status"]
+        ["John" "Active"]
+        ["Jane" "Inactive"]
+    ] options [
+        config: [
+            frozen-rows: [1]
+        ]
+    ]
+]
+----
+1. After creation Right-click on the column 2
+2. Select Menu item: `Column > Overlay > Apply repeating VID` 
+3. Select `data-drop-list`
+
+
+
+=== Loading from File
+
+[source,red]
+----
+view [
+    title "Table from File"
+    table data %mydata.red
+]
+----
+
+== Appendix
+
+=== Internal Data Structures
+
+==== Table Object Structure
+
+[source,red]
+----
+face: make object! [
+    ; Data
+    table-data: []           ; Main data block
+    col-index: []            ; Column index
+    row-index: []            ; Row index
+    default-col-index: []    ; Default column index
+    default-row-index: []    ; Default row index
+    
+    ; Display
+    draw: []                 ; Draw commands
+    draw-block: []           ; Draw block
+    grid: 0x0                ; Grid size
+    grid-size: 0x0           ; Grid size
+    current: 0x0             ; Current position
+    pos: 0x0                 ; Position
+    top: 0x0                 ; Top position
+    
+    ; Freezing
+    frozen: 0x0              ; Number of frozen rows/cols
+    frozen-cols: []          ; Frozen column indices
+    frozen-rows: []          ; Frozen row indices
+    freeze-point: 0x0        ; Freeze point
+    
+    ; Sizing
+    sizes: make map! []      ; Custom sizes
+    box: 100x25              ; Default cell size
+    default-box: 100x25      ; Default box size
+    
+    ; Types and defaults
+    col-type: make map! []   ; Column types
+    defaults: make map! []   ; Default values
+    auto-incr: []            ; Auto-increment columns
+    
+    ; Overlays
+    vid-overlays: #[]        ; VID overlays
+    code-overlays: #[]       ; Code overlays
+    vid-lib: make map! []    ; VID library
+    code-lib: make map! []   ; Code library
+    virtual-cols: make map! [] ; Virtual columns
+    
+    ; Styling
+    colors: make map! []     ; Cell colors
+    col-align: make map! []  ; Column alignment
+    names: make map! []      ; Named ranges
+    
+    ; State
+    read-only-cols: []       ; Read-only columns
+    read-only-rows: []       ; Read-only rows
+    filtered: make map! []   ; Filtered data
+    indices: make map! []    ; Sort indices
+    
+    ; Options
+    sheet?: false            ; Spreadsheet mode
+    auto-col?: false         ; Auto-size columns
+    auto-row?: false         ; Auto-size rows
+]
+----
+
+=== Function Reference
+
+==== Data Access Functions
+
+* `get-data-address face event` - Get data coordinates from event
+* `get-draw-address face event` - Get draw coordinates from event
+* `get-logic-address face draw-cell` - Convert draw to data coordinates
+* `get-col-number face event` - Get column number from event
+* `get-row-number face event` - Get row number from event
+* `get-data-col face draw-col` - Get data column from draw column
+* `get-data-row face draw-row` - Get data row from draw row
+
+==== Display Functions
+
+* `fill face` - Fill/refresh the table display
+* `init face` - Initialize the table
+* `init-grid face` - Initialize the grid
+* `init-indices face` - Initialize indices
+* `adjust-scroller face` - Adjust scrollbars
+* `resize face` - Handle resize event
+
+==== Data Manipulation Functions
+
+* `insert-row face event` - Insert a row
+* `append-row face` - Append a row
+* `remove-row face event` - Remove a row
+* `delete-row face event` - Delete a row
+* `insert-col face event` - Insert a column
+* `append-col face` - Append a column
+* `remove-col face event` - Remove a column
+* `delete-col face event` - Delete a column
+
+==== Overlay Functions
+
+* `set-overlay-vid face event` - Set VID overlay
+* `set-overlay-code face event` - Set code overlay
+* `edit-overlay face event` - Edit overlay
+* `remove-overlay face event` - Remove overlay
+* `clear-overlay face col-num` - Clear overlay
+
+==== Utility Functions
+
+* `freeze face event dim` - Freeze row or column
+* `unfreeze face dim` - Unfreeze row or column
+* `sort-up face event` - Sort ascending
+* `sort-down face event` - Sort descending
+* `filter face event` - Apply filter
+* `unfilter face` - Remove filter
+
+=== Keyboard Shortcuts
+
+|===
+| Key | Action
+| Arrow Keys | Move cell
+| Page Up/Down | Move one page
+| Home | First column
+| End | Last column
+| Tab | Next cell
+| Shift+Tab | Previous cell
+| F2 | Edit cell
+| Shift+F2 | Multi-line edit
+| Alt+F2 | Edit overlay
+| F4 | Interact with VID cell (toggle, click, activate dropdown)
+| F4 (twice) | Show full dropdown list
+| F5 | Submit overlay edit
+| Enter | Confirm edit
+| Escape | Cancel edit
+| Shift+Space | Select row
+| Ctrl+Click | Multi-select
+|===
+
+=== File Formats
+
+==== .red Format
+
+The `.red` format is a Red data file containing:
+
+[source,red]
+----
+Red [
+    ; Header
+]
+
+[
+    ; Options block
+    [
+        frozen-cols: [1 2]
+        frozen-rows: [1]
+        ; ... other options
+    ]
+    ; Table data
+    [
+        ["Header1" "Header2"]
+        ["Data1" "Data2"]
+    ]
+]
+----
+
+**Note:** When saving as a `.red` file, a companion `.redbin` file is also created with the same filename. The `.redbin` file contains all configuration, overlay and customization data that is contained within the table. The original `.red` format only saved the data and some small number of configuration options. This dual-file approach is provided as a transition format to allow existing 'old' `.red` files to still be loaded and saved while preserving all table customizations.
+
+==== .redtbl Format
+
+The `.redtbl` format is a Red Binary format. It contains all of the table data, configuration options, virtual columns, VID overlays and Code overlays, default values, and column alignment.
+
+This is the new table file format, which saves all data, customization, overlays etc. into one file. It can be opened and inspected using this Red code:
+
+[source,red]
+----
+redbin-data: load/as %table.redtbl 'redbin
+----
+
+=== Version History
+
+* **0.106** (7-Jan-2026) - Current version
+* Custom fork by @mikeyaunish
+* Original by @toomasv
+
+== License and Credits
+
+* **Original Author:** @toomasv
+* **Custom Fork:** @mikeyaunish
+* **Repository:** https://github.com/mikeyaunish/table-template[GitHub]
+
+== Support
+
+For issues, questions, or contributions, please visit:
+
+https://github.com/mikeyaunish/table-template[GitHub Repository]

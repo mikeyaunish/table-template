@@ -1,20 +1,24 @@
 Red [
 	title: "table-template"
-	author: {@toomasv  custom fork by: @mikeyaunish and @kavina computers}
+	author: {@toomasv  custom fork by: @mikeyaunish}
 	file: %table-template.red
 	git-url: https://github.com/mikeyaunish/table-template
-	version: 0.093
-	date: 2-AUG-2025
+	version: 0.111
+	date: 13-Jan-2026
 ]
-#include %style.red
-#include %re.red
-~: make op! func [a b][re a b]
+#include %table-template-support-scripts/style.red
+#include %table-template-support-scripts/re.red
+#include %table-template-support-scripts/to-valid-types.red
+#include %table-template-support-scripts/table-template-support-scripts.red
+#include %table-template-support-scripts/requesters.red
+#include %table-template-support-scripts/request-array.red
+
 tbl: [
-	type: 'base
+	type: 'panel
 	size: 317x217
 	color: silver
 	flags: [scrollable all-over]
-	version: 0.093
+	version: 0.111
 	identifier: "table-template"
 	scroller: 			make map! 1
 	index: 				make map! 2
@@ -26,7 +30,7 @@ tbl: [
 	col-index: 			make block! 1
 	full-height-col:	0
 	on-border?:         0x0
-	tbl-editor: 		#(none)
+	tbl-editor:			copy []
 	
 	marks: 				make block! 1
 	anchor: 			make block! 1
@@ -105,30 +109,53 @@ tbl: [
 	data-fit: make map! [x: #(none) y: #(none)]
 		
 	edit-mode?: #(false)
-	change-state: 'before 
+	vid-state: make map! 1
+	change-state: 'before
 	
+	read-only-cols: []
+	read-only-rows: []
+	
+	vid-overlays: #[]
+	code-overlays: #[]
+
+	overlay-config: make map! 10
+	vid-lib: make map! 10
+	code-lib: make map! 10
+	vid-widgets: copy []		
+	cell-state: []
+	cells-selected: [] 
+	vid-draw: make map! 10 []
+	vid-renderer: make map! 10
+	vid-targets: copy []
+	freeform-vid: [ 'cell-button ] ;-- VID objects that allow freeform vid code entry within virtual-cols
+	auto-incr: copy []
+	col-names: copy []
+	col-align: make map! 10
+	user-get-cell-error: copy []
+
 	menu: [
 		"Cell" [
-			"Freeze"   freeze-cell
-			"Unfreeze" unfreeze-cell
-			"Edit"     edit-cell
+			"Freeze"   			freeze-cell
+			"Unfreeze" 			unfreeze-cell
+			"Edit"     			edit-cell
+			"Multi-line Edit  Shift+F2"   edit-cell-multi-line
 		]
 		"Row" [
-			"Freeze"         freeze-row
-			"Unfreeze"       unfreeze-row
-			"Default height" default-height
-			"Show" [
+			"Actions" [
 				"Select"     select-row
 				"Hide"       hide-row
 				"Unhide"     unhide-row
 				"Remove"     remove-row
 				"Restore"    restore-row
 				"Delete"     delete-row
-				"Insert"     insert-row
-				"Append"     append-row
-				"Insert virtual" insert-virtual-row
-				"Append virtual" append-virtual-row
+				"Insert Data Row"  insert-row
+				"Append Data Row"  append-row
+				"Insert Virtual" insert-virtual-row
+				"Append Virtual" append-virtual-row
 			]
+			"Freeze"         freeze-row
+			"Unfreeze"       unfreeze-row
+			"Default height" default-height
 			"Move" [
 				"Top"        move-row-top
 				"Up"         move-row-up
@@ -138,9 +165,38 @@ tbl: [
 				"To ..."     move-row-to
 			]
 			"Find ..."       find-in-row
-			;"Edit"           edit-row
+			"Data Access" [
+				"Read-Only" set-row-read-only
+				"Read-Write" set-row-read-write
+			]			
 		]
 		"Column" [
+			"Actions" [
+				"Select"        			select-col
+				"Default width" 			default-width
+				"Full height"   			full-height
+				"Hide"          			hide-col
+				"Unhide"        			unhide-col
+				;-- "Remove"        			remove-col	
+				;-- "Restore"       			restore-col	;-- destroys virtual-cols
+				"Delete"        			delete-col
+				"Insert Data Column"  		insert-col
+				"Append Data Column"       	append-col
+				"__________________________"
+				"Insert Virtual Column"		insert-virtual-col
+				"Append Virtual Column"		append-virtual-col
+				"__________________________"
+				"Insert Pre-Built Column" 	insert-pre-built-col 
+				"Append Pre-Built Column" 	append-pre-built-col
+				
+			]
+			"Overlay" [
+				"Apply Repeating VID" 		set-overlay-vid
+				"Apply Repeating Code" 		set-overlay-code
+				"Edit Overlay     Alt+F2" 	edit-overlay
+				"Remove Overlay" 			remove-overlay
+			]
+			"Set Column Names" 	set-column-names			
 			"Sort"   [
 				"Loaded" [
 					"Up"   sort-loaded-up
@@ -149,25 +205,12 @@ tbl: [
 				"Up"   sort-up
 				"Down" sort-down
 			]
+		
 			"Unsort"        unsort
 			"Filter ..."    filter
 			"Unfilter"      unfilter
 			"Freeze"        freeze-col
 			"Unfreeze"      unfreeze-col
-			"Show" [
-				"Select"        select-col
-				"Default width" default-width
-				"Full height"   full-height
-				"Hide"          hide-col
-				"Unhide"        unhide-col
-				"Remove"        remove-col
-				"Restore"       restore-col
-				"Delete"        delete-col
-				"Insert"        insert-col
-				"Append"        append-col
-				"Insert virtual" insert-virtual-col
-				"Append virtual" append-virtual-col
-			]
 			"Move" [
 				"First"         move-col-first
 				"Left"          move-col-left
@@ -178,24 +221,38 @@ tbl: [
 			]
 			"Find ..."      find-in-col
 			"Edit ..."      edit-column
-			"Type"   [
-				"integer!" integer!
+			"Type"   [ 
+				"block!"   block!				
+				"char!"    char!
+				"date!"    date!
 				"float!"   float!
+				"image!"   image!				
+				"integer!" integer!
+				"logic!"   logic!
 				"percent!" percent!
 				"string!"  string!
-				"char!"    char!
-				"block!"   block!
-				"date!"    date!
 				"time!"    time!
-				"logic!"   logic!
 				"tuple!"   tuple!
-				"image!"   image!
+				"------"
 				"Load"     load
 				"Draw"     draw
 				"Do"       do
 				"Icon"     icon
 			]
-			"Set default"  set-default
+			"Alignment" [
+				"Left"		set-align-left
+				"Center"	set-align-center
+				"Right"		set-align-right
+			]
+			"Data Access" [
+				"Read-Only" set-col-read-only
+				"Read-Write" set-col-read-write
+			]
+			"Default"  [
+				"Value or Code"  set-default
+				"Auto Increment" set-default-auto-incr
+				"Remove" 		 remove-default
+			]
 		]
 		"Table" [
 			"Unhide"    [
@@ -203,17 +260,17 @@ tbl: [
 				"Row"    unhide-row
 				"Column" unhide-col
 			]
-			"Default height" remove-full-height
-			;"Default width"  set-table-default-width
-			"Open ..."    open-table
-			"Open big ..." open-big
-			"Save"        save-table
-			"Save as ..." save-table-as
-			"Use state ..." use-state
+			"Default height" 	remove-full-height
+			"Open ..."    		open-table
+			"Open big ..." 		open-big
+			"Save"        		save-table
+			"Save as ..." 		save-table-as
+			"Use state ..." 	use-state
 			"Save state as ..." save-state
-			"Clear color" clear-color
+			"Clear color" 		clear-color
 			"Select named range" []
-			"Forget names" forget-names
+			"Forget names" 		forget-names
+			"Show Details" 		show-table-details
 		]
 		"Selection" [
 			"Copy"      copy-selected
@@ -225,6 +282,38 @@ tbl: [
 		]
 	]
 	actors: [
+		
+		do-safe-actor: function [ 
+			cell [string!]
+			act [word!]
+		][
+			if value? cw: to-word cell [ do-actor (get cw) none act ]
+		]
+	
+		do-vid-click: function [] [
+			do-actor -target-vid-object- none 'click
+		]
+
+		do-vid-down: function [ cell [string!]] [
+			do-safe-actor cell 'down
+		]
+
+		
+		toggle-check: function [ cell [string!]] [
+			obj: get to-word cell
+			obj/data: complement to-logic obj/data
+			do-actor obj none 'change
+		]
+		
+		set-vid-focus: function [ cell [string!]] [
+			set-focus (get to-word cell)
+		]
+		
+		toggle-vid-data: function [ cell [string!]] [
+			data-path: to-path  reduce [ to-word cell 'data ] 
+			set data-path complement to-logic (get data-path) 
+		]
+			
 		is-within-view?: function [ 
 			face [object! ]
 			step [pair!]
@@ -239,14 +328,13 @@ tbl: [
 			]
 		]
 		
+
 		in-view: function [ 
 			face [object!] 
-			"Returns absolute row numbers that are in view, as a pair. Excludes frozen rows"
+			"Returns a pair the indicates rows in view. Format: <row-star>x<row-end>"
 		][ 
-			y-adj: either face/data-fit/y = 'outside  [ 1 ][ 0 ]
-			in-view-start: face/current/y + 1
-			in-view-end: min (in-view-start + face/max-grid/y - y-adj - 1 ) face/total/y
-			return to-pair reduce [ in-view-start max in-view-end in-view-start ]
+			start-row: face/current/y + 1
+			return as-pair start-row ( start-row + face/usable-grid/y - 1 - (length? face/frozen-rows ))
 		]		
 
 		
@@ -266,6 +354,8 @@ tbl: [
 		]
 				
 		on-create: func [face [object!] event [event! none!]][] ;-- placeholder to allow init changes
+		on-resize: func [face [object!] event [event! none!]][] ;-- placeholder 
+		on-resizing: func [face [object!] event [event! none!]][] ;-- placeholder to allow init changes
 		
 		set-border: function [face [object!] ofs [pair!] dim [word!]][
 			ofs: ofs/:dim
@@ -292,7 +382,7 @@ tbl: [
 		]
 
 		set-usable: function [ 
-			{Sets usable-grid and data-fit to reflect current table state}
+			{Sets usable-grid and data-fit to reflect current table state. Includes frozen rows}
 			face [ object! ]	
 		][
 			grid-size: face/size - face/scroller-width
@@ -375,15 +465,31 @@ tbl: [
 			face/grid-offset: end - face/size
 		]
 
-		set-last-page: function [ face [object!] ][
+		get-header-height: function [ face [object!] ] [
+			accum: 0
+			foreach row face/frozen-rows [
+				amt: either val: face/sizes/y/:row [ val ] [ face/default-box/y ]
+				accum: accum + amt 
+			]
+			return accum
+		]
+		
+		set-last-page: function [ face [object!] ][ ;-- get size of last page minus frozen rows
+			
+			;-- pg-size: face/size - (to-pair reduce [ 0 face/default-box/y ]) - face/scroller-width
+			pg-size: face/size - (to-pair reduce [ 0 (get-header-height face) ]) - face/scroller-width
+			
+			
+			
 			foreach dim [x y][
 				t: face/total/:dim
 				j: sz: 0
+				
 				while [
 					all [
 						r: face/index/:dim/(t - j)
 						sz: sz + s: get-size face dim r
-						sz <= face/grid-size/:dim
+						sz <= pg-size/:dim 
 					]
 				][
 					j: j + 1
@@ -445,16 +551,110 @@ tbl: [
 			if found: find face/menu/"Column" "Normal height" [change/part found ["Full height" full-height] 2]
 		]
 
-		set-default: function [face [object!] event [event! integer!]][
+		set-default: function [face [object!] event [event! integer!] /auto-incr /delete ][
 			col: get-col-number face event
-			val: either val: face/defaults/:col [ask-code/with val][ask-code]
+			col-type: face/col-type/:col
+			
+			if delete [
+				either face/defaults/:col [
+					if find face/defaults/:col "auto-increment" [
+						fnd-ndx: second find-in-array-at/with-index face/auto-incr 1 col
+						remove (skip face/auto-incr fnd-ndx)
+						remove find face/read-only-cols col 
+					]
+					remove/key face/defaults col	
+					status-msg rejoin [ "Default value for Column " col " with the Heading " mold get-col-header col  " has been removed."]
+				][
+					status-msg rejoin [ "There is NOT a default setting for column " col " with the Heading " mold get-col-header col " . No action taken."]					
+				]
+				exit		
+			] 
+			if not col-type [
+				request-message "Before setting a default value for a column it is suggested that you set the 'Column Type' using the Menu: 'Column/Type'"
+				exit
+			]
+			
+			msg: {To set the default value for this column: Enter a number, a QUOTED string or some Red code. To Delete the default, remove ALL content below and click "OK".}
+			
+			either auto-incr [
+				if col-type <> 'integer! [
+					request-message "The Column Type for this column needs to be set to integer before Auto Increment can be activated. Do this by selecting the Menu: 'Column/Type/Integer!'"
+					exit
+				]
+				val: rejoin [ "auto-increment " mold face/table-data/1/:col " " col ]
+				auto-increment/init face/table-data/1/:col col
+				upsert face/read-only-cols col	
+			][
+				val: either val: face/defaults/:col [
+					request-multiline-text/preload msg val 
+				][
+					request-multiline-text msg
+				]	
+			]
+			if none? val [ exit ]
 			either all [
-				series? val: load val
+				not auto-incr
 				empty? val
 			][
-				remove/key face/defaults col
+				if face/defaults/:col [
+					remove/key face/defaults col	
+					remove find face/read-only-cols col 
+				]
+				
+				msg-add: ""
+				if fnd: find-in-array-at/with-index face/auto-incr 1 col [
+					remove (skip face/auto-incr (fnd/2 - 1))
+					msg-add: " Along with the auto-increment settings."
+				]
+				status-msg rejoin [ "Default value for column " col " removed." msg-add ]				
 			][
 				face/defaults/:col: val
+			]
+		]
+		
+		set-access: function [
+			{modifies access to row or col. Defaults to read-write}
+			face [object!] 
+			event [event! integer!]
+			/col
+			/row
+			/read-only
+		][
+			either integer? event [
+				col-num: row-num: event 
+			][
+				col-num: get-col-number face event
+				row-num: get-row-number face event 	
+			] 
+			either read-only [
+				if col [
+					upsert face/read-only-cols col-num 
+				]
+				if row [
+					upsert face/read-only-rows row-num
+				]
+			][
+				if col [
+					remove/part find face/read-only-cols col-num 1						
+				]
+				if row [
+					remove/part find face/read-only-rows row-num 1						
+				]
+			]
+		]
+		
+		set-cell-align: function [face [object!] cell [block!] col-num [integer!] p0 [pair!] p1 [pair!] ][
+			cell/11/2: either align-type: face/col-align/:col-num [
+				switch align-type [
+					right [
+						as-pair (p0/x + ( p1/x - p0/x - pick get-text-size to-string cell/11/3 1 )) (p0/y + 2 )
+					]
+					center [
+						as-pair (p0/x + (( p1/x - p0/x - pick get-text-size to-string cell/11/3 1 ) / 2) ) (p0/y + 2)
+					]
+				]
+			][
+				4x2  +  p0 ;-- default cell-align = 'left
 			]
 		]
 
@@ -513,10 +713,19 @@ tbl: [
 			get-data-row face row
 		]
 
-		get-data-address: function [face [object!] event [event! pair!]][
+		get-data-address: function [
+			face [object!] 
+			event [event! pair!]
+			/both {include draw-address as well}
+		][
 			cell: either event? event [cell: get-draw-address face event][event]
 			out: get-logic-address face cell
-			out
+			return either both [
+				reduce [ out cell ]
+			][
+				out	
+			]
+			
 		]
 
 		get-logic-address: func [face [object!] draw-cell [pair! none!]][
@@ -569,12 +778,24 @@ tbl: [
 		]
 
 		get-size: func [face [object!] dim [word!] idx [integer!]][
-			any [face/sizes/:dim/:idx face/box/:dim]
+			to-integer any [face/sizes/:dim/:idx face/box/:dim]
 		]
-
-		get-color: func [i [integer!] frozen? [logic!]][
-			case [frozen? [silver] odd? i [white] 'else [snow]]
+		
+		get-color: func [face [object!] row [integer!] col [integer!] frozen? [logic!]][
+			virt?: negative? pick face/col-index col 
+			case [
+				frozen? [
+					either virt? [221.206.206][ silver ]
+				] 
+				odd? row [
+					either virt? [ 238.230.230 ][ white ]
+				] 
+				'else [
+					either virt? [ 230.222.222 ] [ snow ]
+				]
+			]
 		]
+		
 
 		; INITIATION
 
@@ -622,22 +843,59 @@ tbl: [
 			clear face/sizes/y
 			clear face/frozen-rows
 			clear face/frozen-cols
+			clear face/read-only-cols
+			clear face/read-only-rows
+		]
+		
+		clear-table-state: function [ face [object!]][
+		    clear face/frozen-rows
+		    clear face/frozen-cols
+		    face/top: 0x1
+		    face/current: 0x1
+		    clear face/sizes/x
+		    clear face/sizes/y
+		    face/box: 100x25
+		    clear face/row-index 
+		    clear face/col-index
+		    face/auto-col?: #(false)
+		    face/auto-row?: #(false)
+		    clear face/col-type
+		    clear face/cells-selected
+		    face/anchor: 1x1
+		    face/active: 1x1
+		    clear face/names
+
+		    clear face/read-only-rows
+		    clear face/read-only-cols
+		    clear face/auto-incr
+		    clear face/col-names
+			
+			clear face/filtered/x
+			clear face/filtered/y
+			
+			clear face/default-row-index
+			clear face/vid-state
+			clear face/vid-overlays
+			clear face/code-overlays
+			clear face/auto-incr
+			clear face/virtual-cols
+			clear face/defaults
+			clear face/col-align
+			clear face/vid-targets 
 		]
 
 		init-indices: func [face [object!] /only /local i][
 			;Prepare indices
 			face/indices/x: make map! min 10 face/total/x                         ;Room for index for each column
 			face/indices/y: make map! min 10 face/total/y                         ;Room for index for some rows     @@ May be on request?
-			either face/default-row-index [
-				clear face/filtered/y
-				clear face/row-index
-				clear face/default-row-index
+			either face/default-row-index <> [] [
+				clear-table-state face 
 			][
 				face/filtered/y:
 					copy face/row-index:                                         ;Active row-index
 					copy face/default-row-index: make block! face/total/y        ;Room for row numbers
 			]
-			either face/default-col-index [
+			either face/default-col-index <> [] [
 				clear face/filtered/x
 				clear face/col-index
 				clear face/default-col-index
@@ -672,6 +930,13 @@ tbl: [
 				set-last-page face
 				adjust-scroller face
 			]
+			set-vid-lib face
+			set-vid-draw face
+			set-code-lib face
+			set-vid-renderer face 
+			 
+			face/vid-widgets: collect [ foreach [k v] face/vid-lib [ keep k ] ]
+			make-overlay-config face
 		]
 
 		init-fill: function [face [object!] /only ][
@@ -703,16 +968,23 @@ tbl: [
 			]
 			face/draw: face/draw-block
 			;Initialize marks
-			face/marks: insert tail face/draw [line-width 2.5 fill-pen 0.0.0.220]
+			face/marks: insert tail face/draw [pen 0.0.255 line-width 2.8 fill-pen 0.0.0.220]
 			unless only [
 				mark-active face 1x1
 				set-grid-offset face
 			]
 		]
 
-		init: func [face [object!]][
+		init: func [
+			face [object!]
+			/with block-data [block!]
+		][
+			if with [
+				data: face/table-data: block-data
+				clear-table-state face  
+			]
 			face/freeze-point: face/frozen: face/top: face/current: 0x0
-			face/selected: copy []
+			face/cells-selected: copy []
 			face/scroller/x/position: face/scroller/y/position: 1
 			if not empty? face/table-data [
 				init-grid face
@@ -725,6 +997,7 @@ tbl: [
 
 		fix-cell-outside: func [face [object!] cell [block!] dim [word!]][
 			cell/6/:dim: cell/7/:dim: cell/9/:dim: cell/10/:dim: cell/11/2/:dim: to-integer face/size/:dim
+			remove/part skip cell 11 length? cell 
 		]
 
 		get-row-height: function [ face [object!] data-y [integer!] frozen-y? [logic!]][
@@ -759,12 +1032,15 @@ tbl: [
 			frozen? [logic!  ]
 			p0      [pair!   ]
 			p1      [pair!   ]
+			/extern col-num row-num this-cell
 		][
+
+			
 			either index-x <= face/total/x [
 				data-x: face/col-index/:index-x
 				cell/4:  any [
 					face/colors/(as-pair data-x data-y)
-					get-color draw-y frozen?
+					get-color face draw-y draw-x frozen?
 				]
 				cell/9:  (cell/6: p0) + 1
 				cell/10: (cell/7: p1) - 1
@@ -780,6 +1056,18 @@ tbl: [
 						all [v: face/virtual-cols/:data-x v: v/data/:data-y] [form v]
 						true [face/dummy]
 					]
+					set-cell-align face cell data-x p0 p1
+					
+					if any [ face/vid-overlays/:data-x face/code-overlays/:data-x ] [
+						remove/part skip cell 11 100 
+						append cell compose/only [
+							pen 221.221.0
+							line-width 2 
+							line (as-pair (p0/x + 2) 2) (as-pair (p1/x - 2) 2) 
+							pen black
+						]
+					]					
+					
 				][
 					switch/default type [; AND whether it is specific
 						draw [
@@ -815,29 +1103,62 @@ tbl: [
 								cell/11/3: face/dummy
 							]
 						]
-					][
-						cell/11/1: 'text
-						cell/11/2:  4x2  +  p0
-						cell/11/3: form case [
-							all [data-y > 0 data-x > 0][
-								switch/default type [
-									do [
-										do face/table-data/:data-y/:data-x
-									]
-									logic! [either face/table-data/:data-y/:data-x [face/true-char][face/false-char]]
+					][	;-- default for switch
+						case [
+							face/vid-overlays/:data-x [
+								either draw-vid: face/vid-draw/( to-word face/vid-overlays/:data-x/id) [
+									do bind drawing: load mold/only draw-vid 'p0
 								][
-									any [face/table-data/:data-y/:data-x face/dummy]
+									cell/11/1: 'text
+									cell/11/2: cell/9
+									cell/11/3: face/dummy							
 								]
 							]
-							data-x = 0 [either face/sheet? [index-y][data-y]]
-							data-y = 0 [either face/sheet? [index-x][data-x]]
 							true [
-								cell/4: 250.220.220
-								case [
-									all [v: face/virtual-rows/:data-y v: v/data/:data-x] [form v]
-									all [v: face/virtual-cols/:data-x v: v/data/:data-y] [form v]
-									true [face/dummy]
+								cell/11/1: 'text
+								cell/11/2:  4x2  +  p0	;-- default left-align
+								cell/11/3: form case [
+									all [data-y > 0 data-x > 0][
+										switch/default type [
+											do [
+												do face/table-data/:data-y/:data-x
+											]
+											logic! [
+												form face/table-data/:data-y/:data-x
+											]
+										][
+											any [face/table-data/:data-y/:data-x face/dummy]
+										]
+									]
+									data-x = 0 [either face/sheet? [index-y][data-y]]
+									data-y = 0 [either face/sheet? [index-x][data-x]]
+									true [
+										cell/4: get-color face draw-y draw-x frozen?
+										case [
+											all [v: face/virtual-rows/:data-y v: v/data/:data-x] [
+												form v
+											]
+											all [v: face/virtual-cols/:data-x (not v/type = "vid-repeating") v: v/data/:data-y ]	[
+													form v
+												]
+											all [v: face/virtual-cols/:data-x v/type = "vid-repeating" ] [
+												either data-y = 1 [
+													v/data/:data-y
+												][
+													;add-vid-cell face data-x data-y p0	
+													"" ;-- return empty string because VID object will display here 
+												]
+											]
+											true [face/dummy]
+										]
+									]
 								]
+								if face/code-overlays/:data-x [
+									if data-y > to-valid-integer get-max face/frozen-rows [
+										do-code-overlay face data-x data-y cell
+									]
+								]
+								set-cell-align face cell data-x p0 p1
 							]
 						]
 					]
@@ -845,6 +1166,678 @@ tbl: [
 			][
 				fix-cell-outside face cell 'x
 			]
+		]
+		
+		do-code-overlay: function [
+			face
+			data-x
+			data-y
+			cell
+			/extern row-num col-num this-cell 			
+		][
+			row-num: data-y
+			col-num: data-x
+			face/actors/get-cell: func [col] compose [ user-get-cell table-obj col row-num ]
+			this-cell-orig: this-cell: face/table-data/:row-num/:col-num
+			face/actors/set-cell-color: func [ clr ] compose [ user-set-cell/clr cell clr ]
+			face/actors/set-cell: func [ val ] compose [ user-set-cell cell val ]
+			
+			if error? err: try/all [
+                do bind load/all (copy face/code-overlays/:data-x/code) face/actors
+                true ;-- makes try happy
+            ][ 
+                status-msg [ newline "********** code-overlay ERROR on column number:" col-num " row number:" row-num "***************************************************************" ]
+                status-msg "********** -START overlay script- ******************************************************************" 
+                status-msg face/code-overlays/:data-x/code 
+            	status-msg [ "********** -END overlay script- ********************************************************************" newline ]
+                status-msg err
+                status-msg [ "*****************************************************************************************************" newline ]
+            ]
+			
+			if this-cell-orig <> this-cell [
+				user-set-cell cell this-cell
+			]
+		]
+
+		set-vid-context: function [
+			face
+			data-x
+			data-y
+			/extern row-num col-num this-cell 			
+		][
+			row-num: data-y
+			col-num: data-x
+			face/actors/get-cell: func [col] compose [ user-get-cell table-obj col row-num ]
+			this-cell: face/table-data/:row-num/:col-num
+		]		
+		
+		get-col-header: func [
+			col [integer!]
+		][
+			get-data-at col 1 
+		]
+		
+		get-data-at: func [
+			col [integer!]
+			row [integer!]
+		][
+			either col < 0 [
+				get-virt-data-at col row 
+			][
+				table-obj/table-data/:row/:col 	
+			]
+		]
+		
+		get-virt-data-at: func [
+			col [integer!]
+			row [integer!]
+		][
+			table-obj/virtual-cols/:col/data/:row
+		]
+		
+		user-set-cell: function [ 
+			cell [block!]
+			val
+			/clr
+		][
+			either clr [
+				cell/4: val 	
+			][
+				cell/11/3: to-valid-string val 	
+			]
+		]
+		
+		user-get-cell: func [ 
+			face [object!]
+			col [integer! string!]
+			row [integer!]
+		][
+			if string? col [
+				either face/col-names = [][
+					if (face/user-get-cell-error =  new-err: reduce [ col ]) [ exit ]
+					face/user-get-cell-error: new-err 
+					request-message {The "get-cell" function needs column names to be defined.^/Please use the Menu: "Table/Set Column Names" to define the columns. Once this is done you can properly use the "get-cell" function.}
+					exit
+				][
+					if not col: system/words/select face/col-names col [
+						col: none	
+					]
+				]
+			]
+			face/user-get-cell-error: copy []
+			either col-type: face/col-type/:col [
+				col-type: to-string col-type
+				remove back tail col-type
+			][
+				col-type: "string"
+			]
+			
+			return either col [
+				cast-to-datatype col-type face/table-data/:row/:col 	
+			][
+				cast-to-datatype col-type ""
+			]
+		]
+		
+		set-column-names: function [ 
+			face [object!]
+			/only {resequence the col-names only}
+		][
+			field-block: copy []	
+			foreach col-num face/col-index [
+				either col-num > 0 [
+					if not face/table-data/1/:col-num  [
+						request-message rejoin [ "Column number: " col-num " does not contain a header value. Please enter a header value before setting the column names." ]
+						exit
+					]
+					append/only field-block reduce [ col-num face/table-data/1/:col-num ]
+				][
+					if not face/virtual-cols/:col-num/data/1 [
+						request-message rejoin [ "Virtual Column number: " col-num " does not contain a header value. Please enter a header value before setting the column names." ]
+						exit
+					]
+					append/only field-block reduce [ col-num face/virtual-cols/:col-num/data/1 ]
+				]
+			]
+			
+			input-block: either face/col-names = [] [
+				to-kebab-names copy/deep field-block
+			][
+				collect [
+					foreach entry field-block [
+						col-num: entry/1
+						col-header: entry/2
+						either fnd: find face/col-names col-num [
+							keep to-valid-string pick face/col-names ((index? fnd) - 1)
+						][
+							keep to-kebab-names reduce [ entry ]
+						]
+					]
+				]
+			]
+			if only [ 
+				old-names: copy face/col-names
+				clear face/col-names
+				foreach blk field-block [
+					append face/col-names reduce [ 
+						pick old-names ((index? (find old-names blk/1)) - 1)
+						blk/1
+					]
+				]
+				exit 
+			]
+			if req-res: request-col-names "Enter the PERMANENT column name for each column" field-block input-block [
+				face/col-names: collect [
+					fb-len: length? field-block
+					repeat index fb-len [
+						keep reduce [  req-res/:index field-block/:index/1 ]
+					]
+				]
+			]
+		]
+			
+		set-code-lib: function [ face [object!]][
+			face/code-lib: make map! 10
+			face/code-lib/cell-New-Code-Overlay: make object! [	
+				id: "cell-New-Code-Overlay"
+			    code: {}
+			]					
+			face/code-lib/cell-code-example: make object! [	
+				id: "cell-code-example"
+			    code: {if row-num = 2 [ ^/^-print "--------------------------------------------------------------------------------------"^/^-print [ "Code Example at Column Heading:" mold get-col-header col-num  ]^/^-print   "Right Click on the column and select the Menu: Column/Overlay/Edit Overaly (Alt + F2)," ^/^-print   "to edit this example code." ^/^-print "--------------------------------------------------------------------------------------"^/^-set-cell-color green ^/^-this-cell: rejoin  [  "COL (" col-num ") ROW (" row-num ")"]^/^-print [ ">>get-cell 2" newline "==" get-cell 2 ]^/^-print [ {>>get-cell "id"} newline "==" get-cell "id" ]^/^-print [ ">>mold get-row row-num" newline "==" mold get-row row-num ]^/^-print [ ">>get-data-at 2 2" newline "==" get-data-at 2 2 ]^/]}
+			]			
+			face/code-lib/cells-to-red-yellow-green: make object! [	
+				id: "cells-to-red-yellow-green"
+			    code: {int: to-valid-integer this-cell^/case [ ^/^-int < 25 [ set-cell-color green ]^/^-all [ int >= 25 int <= 50 ] [ set-cell-color yellow ]^/^-int > 50 [ set-cell-color red ]^/]}
+			    datatype: "integer"
+			]
+		]
+
+		set-vid-renderer: function [ 
+			face [object!]
+			;-- variables available to vid-renderer context
+			;-- ------------------------------------------------
+			;--           data-addr = data address pair!
+			;-- 		  draw-addr = draw address pair!
+			;-- -target-vid-object- = name of object created. Used for manipulation after rendering
+			;--        vid-obj-data = data of the vid object
+			;--          -vid-code- = code needed for virtual col cell ONLY
+			;-- --------------------------------------------
+			;-- target index  description
+			;--        -----  -----------
+			;--          1		top left corner
+			;--          2		size
+			;--          3		un-rendered? / starts as true 	
+			;--          4		renderer name
+			;-- 	     5      data address 
+			;-- 	     6      draw address 
+			;-- --------------------------------------------
+			
+		][
+			face/vid-renderer/data-drop-list: [
+				render: [
+					style data-drop-list: drop-list 94x24
+						on-created [
+							face/extra/data-addr: data-addr
+							face/extra/draw-addr: draw-addr
+							either all [ 
+								table-obj/table-data/(data-addr/y)/(data-addr/x)
+								fnd: find face/data table-obj/table-data/(data-addr/y)/(data-addr/x) 
+							][
+								face/selected: index? fnd 
+							][
+								face/selected: 0
+							]
+							
+							face/menu: compose/deep [
+							    "Drop Down List"
+								    [	
+								    	"Update List from Column Data"  repop-drop-list
+										"Edit List" 				    manual-drop-list
+								    ]
+							]					    
+							set 'data-drop-list-menu function [ face event ][
+								switch event/picked [
+									manual-drop-list [ 
+										table-obj/actors/edit-drop-list-data face event 
+									]
+									repop-drop-list [
+										table-obj/actors/repop-drop-list-data face event 
+									]
+								]
+							]		
+						]
+						extra [ 
+							tab-key-to-key-down: #(true)
+							disable-wheel: true
+							roll-back: 0 
+							data-addr: 0x0
+							draw-addr: 0x0
+						]
+						on-menu [data-drop-list-menu face event]
+						on-change [
+							either face/extra/roll-back = 0 [
+								data-addr: face/extra/data-addr
+								table-obj/actors/update-vid-cell table-obj to-string pick face/data face/selected face/extra/data-addr face/extra/draw-addr
+							][
+								face/selected: face/selected + face/extra/roll-back
+								face/extra/roll-back: 0		
+							]
+						]
+						on-down [
+							table-obj/actors/mark-active table-obj face/extra/draw-addr
+							set-focus face
+							return 'done
+						]
+
+						on-key-down [
+							if any [
+								event/key = 'left 
+								event/key = 'right
+								event/key = #"^-" 
+							][	
+								either event/key = 'left [ face/extra/roll-back: 1 ] [ face/extra/roll-back: -1]
+								set-focus table-obj
+								if event/key = #"^-" [
+									dir: either find event/flags 'shift [ 'left ] [ 'right ]
+									table-obj/actors/hot-keys/feed table-obj #(none) dir
+									return 'done 
+								]
+								
+								return event
+							]
+							if 	event/key <> #"^M" [ return 'done ]
+							set-focus table-obj
+							return event
+						]
+					at (target/1 + 3x0 ) -target-vid-object-: data-drop-list (target/2 + -6x-2 )
+						data [(vid-obj-data)]
+						extra [ 
+							tab-key-to-key-down: #(true)
+							roll-back: 0 
+							data-addr: 0x0
+							draw-addr: 0x0
+							disable-wheel: true
+						]
+				]
+				restore: [
+					overlay-code: load table-obj/vid-overlays/(data-addr/x)/code/1
+					vid-obj-data: copy overlay-code/data
+				]
+			]
+			
+			face/vid-renderer/data-checkbox-for-logic: [
+				render: [
+					style data-checkbox-for-logic: check 94x21 "true"
+						extra [ 
+							data-addr: 0x0 
+							draw-addr: 0x0
+						]
+						on-created [
+							face/extra/data-addr: data-addr
+							face/extra/draw-addr: draw-addr							
+							face/data: to-valid-logic table-obj/table-data/(data-addr/y)/(data-addr/x)
+							face/text: form face/data
+						] 
+						on-change [
+							face/text: form face/data
+							table-obj/actors/update-vid-cell table-obj to-valid-logic face/data face/extra/data-addr face/extra/draw-addr
+						]
+						on-down [ 
+							table-obj/actors/mark-active table-obj face/extra/draw-addr
+							set-focus face
+							return 'done							
+						]
+					at (target/1 + 7x2 ) -target-vid-object-: data-checkbox-for-logic (vid-obj-data) (as-pair (target/2/x + -11) 20)
+						extra [ 
+							data-addr: 0x0 
+							draw-addr: 0x0
+						]
+				]
+				restore: [
+					vid-obj-data: to-valid-logic table-obj/table-data/(data-addr/y)/(data-addr/x)
+				]
+			]
+				
+			face/vid-renderer/cell-checkbox-for-row-selection: [
+				render: [
+					style cell-checkbox-for-row-selection: check 94x21 "true"
+						extra [ 
+							data-addr: 0x0 
+							draw-addr: 0x0
+						]
+						on-created [
+							face/extra/data-addr: data-addr
+							face/extra/draw-addr: draw-addr							
+							either find table-obj/vid-state vid-name: to-lit-word rejoin [ "cell" face/extra/data-addr ][
+								face/data: table-obj/vid-state/:vid-name 
+								face/text: form to-valid-logic face/data
+							][
+								face/data: false
+								face/text: "false"
+							]
+							face/menu: compose/deep [
+							    "Set Checkmarks"
+								    [	
+								    	"All (Filtered) On"  select-checks-all
+								    	"All (Filtered) Off" deselect-checks-all
+								    	"Every Row On"		 select-checks-every
+								    	"Every Row Off" 	 deselect-checks-every
+								    ]
+								"Selected Rows" 
+									[
+										"Export to Clipboard" export-checks-to-clip
+									]
+							]
+							cell-check-menu: function [ face event ] [
+								switch event/picked [
+									select-checks-all      	[table-obj/actors/set-checkmarks/set-all face event none ]
+									deselect-checks-all    	[table-obj/actors/set-checkmarks/set-all/off face event none ]
+									select-checks-every		[table-obj/actors/set-checkmarks/set-all/every face event none ]
+									deselect-checks-every 	[table-obj/actors/set-checkmarks/set-all/off/every face event none ]
+									export-checks-to-clip	[table-obj/actors/export-checks-to-clip face event ]
+								]
+							]														
+						] 
+						on-menu [cell-check-menu face event]						
+						on-change [
+							vid-name: to-lit-word rejoin [ "cell" face/extra/data-addr ]
+							put table-obj/vid-state vid-name face/data 
+							face/text: form face/data
+							table-obj/actors/update-vid-cell table-obj to-valid-logic face/data face/extra/data-addr face/extra/draw-addr
+						]
+						on-down [ 
+							table-obj/actors/mark-active table-obj face/extra/draw-addr
+							set-focus face
+							return 'done							
+						]
+					at (target/1 + 7x2 ) -target-vid-object-: cell-checkbox-for-row-selection (vid-obj-data) (as-pair (target/2/x + -11) 20)
+				]
+				restore: [
+					vid-obj-data: to-valid-logic table-obj/table-data/(data-addr/y)/(data-addr/x)
+				]
+			]
+			
+			face/vid-renderer/cell-button: [
+				render: [
+					style cell-button: button 90x21 left "cell-button" font-name "Segoe UI" font-size 9
+						extra [ 
+							data-addr: 0x0 
+							draw-addr: 0x0
+						]
+						on-created [
+							face/extra/data-addr: data-addr
+							face/extra/draw-addr: draw-addr
+							face/text: rejoin [ "  " face/text ]
+						]	
+						on-down [ 
+							table-obj/actors/mark-active table-obj face/extra/draw-addr
+							set-focus face
+							return 'done							
+						]																
+					at (target/1 + 5x2 ) -target-vid-object-: (bind load/all -vid-code- table-obj/actors) (as-pair (target/2/x + -11) 21)
+					
+				]
+				restore: [
+					-vid-code-: table-obj/virtual-cols/(data-addr/x)/code/2/1
+				]
+			]								
+			
+		]
+
+
+		set-vid-draw: function [ 
+			face [object!]
+		][
+			face/vid-draw: make map! 10
+			
+			;-- Available Variables in draw context
+			;--------------------------------------
+			;-- face   = table-obj
+			;-- cell   = existing cell drawing
+			;-- p0     = top-left   ie: 200x25
+			;-- p1     = btm-right  ie: 300x50
+			;-- data-y = row num
+			;-- data-x = col num 
+
+			face/vid-draw/data-drop-list: [
+				cell/6: (p0 + 3x0)
+				cell/7: (p1 + -3x-2)
+				cell/11/1: 'text
+				cell/11/2: p0 + 7x3
+				cell/11/3: (form face/table-data/:data-y/:data-x)
+
+				remove/part (skip cell 11) length? cell ;-- clean out rest of cell drawing
+				
+				append cell compose/deep [
+					;-- green bars
+					line-width 1
+					fill-pen 77.153.0
+					pen 0.255.0
+					box (p0 + 1x1 ) (as-pair (p0/x + 2) (p1/y - 1) )		
+					box ( as-pair (p1/x - 3) (p0/y + 1)) (p1 + -1x-1)
+					
+					;-- drop-down decor
+					pen black
+					fill-pen gray
+					line-width 0.75								
+					line (as-pair (p1/x - 15) (p0/y + 9))  (as-pair (p1/x - 11) (p0/y + 13 ))
+					line (as-pair (p1/x - 11) (p0/y + 13))   (as-pair (p1/x - 7) (p0/y + 9) )
+					
+					;-- full cell box
+					fill-pen 255.255.255.255
+					box (p0) (p1)
+				]
+			]
+			
+			face/vid-draw/cell-button: [
+				cell/4: 255.255.255.0
+				cell/6: (p0 + 3x1)
+				cell/7: (p1 + -3x-2)				
+				cell/11/1: 'text
+				cell/11/2: p0 + 7x4
+				cell/11/3: rejoin [ " " (select load face/virtual-cols/(data-x)/code/2/1 'cell-button) ]
+
+				remove/part (skip cell 11) length? cell ;-- clean out rest of cell drawing
+				
+				append cell compose/deep [
+					;-- green bars
+					;-- ----------
+					line-width 1
+					fill-pen 77.153.0
+					pen 0.255.0
+					box (p0 + 1x1 ) (as-pair (p0/x + 3) (p1/y - 1) )		
+					box ( as-pair (p1/x - 3) (p0/y + 1)) (p1 + -1x-1)
+					
+					;-- cell-button decor
+					;-- -----------------
+					pen black
+					line-width .2
+					fill-pen 255.255.255.255
+					box (p0 + 6x2 ) (p1 + -6x-3 ) 3
+					
+					;-- full cell outline
+					;-- -----------------
+					pen black
+					fill-pen 255.255.255.255
+					box (p0) (p1)
+				]
+			]
+			
+			face/vid-draw/data-checkbox-for-logic: [
+				cell/6: (p0 + 3x0)
+				cell/7: (p1 + -3x-2)
+				cell/11/1: 'text
+				cell/11/2: p0 + 23x3
+				cell/11/3: (form to-valid-logic face/table-data/:data-y/:data-x)				
+				either (form face/table-data/:data-y/:data-x) = "true" [
+					box-clr: [ fill-pen 0.95.184 ]
+					check-mrk: compose/deep [
+						pen 255.255.255
+						line-width .75
+						line (p0 + 11x12) (p0 + 13x14)
+						line (p0 + 13x14) (p0 + 17x10)
+					]
+
+				][
+					box-clr: [ fill-pen 240.240.240 ]
+					check-mrk: []
+				]
+				remove/part (skip cell 11) length? cell ;-- clean out rest of cell drawing
+				append cell compose/deep [
+					;-- green bars
+					fill-pen 77.153.0
+					pen 0.255.0
+					box (p0 + 1x1 ) (as-pair (p0/x + 2) (p1/y - 1) )		
+					box ( as-pair (p1/x - 3) (p0/y + 1)) (p1 + -1x-1)
+					pen black
+
+					;-- VID "check" decor
+					line-width .6
+					(box-clr)
+					;-- box (p0 + 8x6) (p0 + 19x17 ) 2
+					pen 0.95.184
+					box (p0 + 8x6) (p0 + 19x18 ) 2
+					(check-mrk)
+					pen black
+					
+					;-- full cell box
+					fill-pen 255.255.255.255
+					box (p0) (p1)
+				]
+			]
+			
+			face/vid-draw/cell-checkbox-for-row-selection: [
+				cell/6: (p0 + 3x0)
+				cell/7: (p1 + -3x-2)
+				cell/11/1: 'text
+				cell/11/2: p0 + 23x3
+				(cell-name: to-lit-word	rejoin [ "cell" data-x "x" data-y ])
+				cell/11/3: (form to-valid-logic face/vid-state/:cell-name)				
+				either face/vid-state/:cell-name [
+					box-clr: [ fill-pen 0.95.184 ]
+					check-mrk: compose/deep [
+						pen 255.255.255
+						line-width .75
+						line (p0 + 11x12) (p0 + 13x14)
+						line (p0 + 13x14) (p0 + 17x10)
+					]
+
+				][
+					box-clr: [ fill-pen 240.240.240 ]
+					check-mrk: []
+				]
+				remove/part (skip cell 11) length? cell ;-- clean out rest of cell drawing
+				append cell compose/deep [
+					;-- green bars
+					fill-pen 77.153.0
+					pen 0.255.0
+					box (p0 + 1x1 ) (as-pair (p0/x + 2) (p1/y - 1) )		
+					box ( as-pair (p1/x - 3) (p0/y + 1)) (p1 + -1x-1)
+					pen black
+
+					;-- VID "check" decor
+					line-width .6
+					(box-clr)
+					pen 0.95.184
+					box (p0 + 8x6) (p0 + 19x18 ) 2
+					(check-mrk)
+					pen black
+					
+					;-- full cell box
+					fill-pen 255.255.255.255
+					box (p0) (p1)
+				]
+			]			
+		]
+
+		set-vid-lib: function [ face [object!]][
+			face/vid-lib: make map! 10
+			;-- these items will eventually be loaded from a file
+			face/vid-lib/data-drop-list: make object! [	
+				id: "data-drop-list"
+			    code:  [ {data-drop-list data ["apple" "banana" "carrot"]} ]
+			    on-F4: {
+					do bind load/all mold/only table-obj/vid-renderer/(target/4)/restore face
+					table-obj/pane: layout/only new-lay: compose/deep bind load/all mold/only table-obj/vid-renderer/(target/4)/render 'data-addr
+					set-focus -target-vid-object-
+			    }
+			    when-applied: {setup-data-drop-list}
+			    on-edit: {status-msg rejoin [ "To edit the VID Overlay at column " table-obj/active/x " , right click on any of the drop-down lists."] }
+			    datatype: "string"
+			]
+			face/vid-lib/cell-checkbox-for-row-selection: make object! [	
+				id: "cell-checkbox-for-row-selection"
+			    code: [{cell-checkbox-for-row-selection}]
+			    on-F4: {
+					do bind load/all mold/only table-obj/vid-renderer/(target/4)/restore face
+					table-obj/pane: layout/only new-lay: compose/deep bind load/all mold/only table-obj/vid-renderer/(target/4)/render 'data-addr
+					-target-vid-object-/data: complement to-valid-logic -target-vid-object-/data
+					do-actor -target-vid-object- none 'change			    
+			    }
+			    on-sort: "logic-to-sortable"
+			    when-applied: {setup-cell-checkbox-for-row-selection}
+			    on-edit: {status-msg rejoin [ "To modify the VID Overlay checkboxes at column " table-obj/active/x ", use the built in menus by right clicking on any checkbox."] }
+			    datatype: "logic"
+			]
+						
+			face/vid-lib/cell-button: make object! [	
+				id: "cell-button"
+			    code: [{cell-button}]
+			    on-F4: {
+			    	do bind load/all mold/only table-obj/vid-renderer/(target/4)/restore face
+			    	table-obj/pane: layout/only new-lay: compose/deep bind load/all mold/only table-obj/vid-renderer/(target/4)/render 'addr
+			    	do-actor -target-vid-object- none 'click
+			    }
+			]
+			
+			face/vid-lib/data-checkbox-for-logic: make object! [	
+				id: "data-checkbox-for-logic"
+			    code: [{data-checkbox-for-logic}]
+			    on-F4: {
+					do bind load/all mold/only table-obj/vid-renderer/(target/4)/restore face
+					table-obj/pane: layout/only new-lay: compose/deep bind load/all mold/only table-obj/vid-renderer/(target/4)/render 'addr
+					-target-vid-object-/data: complement to-valid-logic -target-vid-object-/data
+					do-actor -target-vid-object- none 'change
+			    }
+			    when-applied: {setup-data-checkbox-for-logic}
+			    on-sort: "logic-to-sortable"
+				on-edit: {status-msg rejoin [ "There are NO editable components for the VID Overlay at column " face/active/x ] }			    
+			    datatype: "logic"
+			]												
+		]
+
+		add-code-cell: function [
+			face    [object! ]	
+			data-x  [integer!]
+			data-y  [integer!]
+			pos		[pair!   ]
+		][
+			code-listing: collect [ 
+				foreach item (keys-of face/code-lib) [
+					keep to-string item 
+				]
+			]
+			either req-res: request-list "Select a Code Overlay" code-listing [
+				code-conf: face/code-lib/(to-get-word req-res)
+			][
+				exit
+			]
+			face/code-overlays/(data-x): code-conf 
+		]
+		
+		get-at-key-or-less: function [
+			{return the map item at the key location or one that is less}
+			map
+			key [integer!]
+			/only {return key integer only}
+		][
+			keys: keys-of map 
+			while [not find keys key] [
+				key: key - 1
+			]
+			if only [ return key]
+			return map/:key
 		]
 
 		add-cell: function [
@@ -858,21 +1851,34 @@ tbl: [
 			frozen? [logic!  ]
 			p0      [pair!   ]
 			p1      [pair!   ]
+			/extern row-num col-num this-cell
 		][
-
 			data-x: face/col-index/:index-x
+			
 			either frozen? [
 				text: form case [
 					data-x = 0 [either face/sheet? [index-y][data-y]]
 					data-y = 0 [either face/sheet? [index-x][data-x]]
+					data-x < 0 [face/virtual-cols/:data-x/data/:data-y ]
 					true [any [face/table-data/:data-y/:data-x face/dummy]]
 				]
+				
 				cell: compose/only [
 					line-width 1
-					fill-pen (get-color draw-y frozen?)
+					fill-pen (get-color face draw-y draw-x frozen?)
 					box (p0) (p1)
 					clip (p0 + 1) (p1 - 1)
 					(reduce ['text p0 + 4x2 text])
+				]
+				set-cell-align face cell data-x p0 p1
+				
+				if any [ face/vid-overlays/:data-x face/code-overlays/:data-x ] [
+					append cell compose/only [
+						pen 221.221.0
+						line-width 2 
+						line (as-pair (p0/x + 2) 2) (as-pair (p1/x - 2) 2) 
+						pen black
+					]
 				]
 				insert/only at row draw-x cell
 			][
@@ -887,25 +1893,56 @@ tbl: [
 						text: form case [
 							data-x = 0 [either face/sheet? [index-y][data-y]]
 							data-y = 0 [either face/sheet? [index-x][data-x]]
+							all [v: face/virtual-cols/:data-x v/type = "vid-repeating" ] [
+								;add-vid-cell face data-x data-y p0
+								either all [ frozen? data-y = 1 ][
+									v/data/:data-y									
+								][
+									face/dummy ;-- return dummy because VID object will display here 	
+								]
+							]	
+							all [v: face/virtual-cols/:data-x v/type <> "vid-repeating" ] [
+								form v/data/:data-y
+							]													
 							true [any [face/table-data/:data-y/:data-x face/dummy]]
 						]
 					]
 				]
 				cell: compose/only [
 					line-width 1
-					fill-pen (get-color draw-y frozen?)
+					fill-pen (get-color face draw-y draw-x frozen?)
 					box (p0) (p1)
 					clip (p0 + 1) (p1 - 1)
 					(reduce case [
 						draw? [['translate  p0 + 1x1  drawing]]
-						true  [['text       p0 + 4x2  text]]
+						true  [['text       p0 + 4x2  text   ]]
 					])
+				]
+				
+				case [
+					face/code-overlays/:data-x [
+						if data-y > to-valid-integer get-max face/frozen-rows [
+							do-code-overlay face data-x data-y cell
+						]
+					]				
+					vid-overlay?: face/vid-overlays/:data-x [
+						if draw-vid: face/vid-draw/( to-word face/vid-overlays/:data-x/id) [
+							do bind load mold/only draw-vid 'p0
+						]
+					]
+				]
+				if not vid-overlay? [
+					set-cell-align face cell data-x p0 p1 
 				]
 				insert/only at row draw-x cell
 			]
 		]
 
-		set-cell: function [
+		get-cell: func 			[][] 	;-- placeholder functions
+		set-cell: func 			[][] 
+		set-cell-color: func 	[][]
+		
+		set-table-cell: function [
 			face    [object! ]
 			row     [block!  ]
 			data-y  [integer!]
@@ -918,11 +1955,26 @@ tbl: [
 			py0     [integer!]
 			py1     [integer!]
 		][
-
 			sx: get-size face 'x face/col-index/:index-x
 			px1: px0 + sx
 			p0: as-pair px0 py0
 			p1: as-pair px1 py1
+
+			data-col: face/col-index/:index-x
+			data-row: face/row-index/:index-y
+
+			
+			if all [ 
+				overlay: face/vid-overlays/:data-col
+				not frozen?
+			][
+				sy: get-size face 'y data-y
+				data-row: face/row-index/:index-y
+				;--                                                                                   draw-addr	              data-addr 
+				append/only face/vid-targets reduce [ p0 as-pair sx sy #(true) to-lit-word overlay/id as-pair data-col data-row as-pair grid-x ( grid-y + 1 ) ]
+				;append/only face/vid-targets reduce [ p0 as-pair sx sy #(true) to-lit-word overlay/id as-pair index-x index-y as-pair data-col data-row]
+			]
+			
 			either block? cell: row/:grid-x [
 				fill-cell face cell data-y index-y index-x grid-y grid-x frozen? p0 p1
 			][
@@ -943,13 +1995,15 @@ tbl: [
 			py0      [integer!] "Row offset start"
 			py1      [integer!] "Row offset end"
 		][
+			
 			px0: to-integer face/freeze-point/x
 			grid-x: 0
 			while [px0 < face/size/x][
+				;prin [ "   > grid-x = " grid-x  " " mold px0]
 				grid-x: grid-x + 1
 				index-x: face/current/x + grid-x
 				either index-x <= face/total/x [
-					px0: to-integer set-cell face grid-row data-y index-y index-x grid-y grid-x frozen? px0 py0 py1
+					px0: to-integer set-table-cell face grid-row data-y index-y index-x grid-y grid-x frozen? px0 py0 py1
 					face/grid/x: grid-x
 				][
 					cell: grid-row/:grid-x
@@ -964,38 +2018,134 @@ tbl: [
 			]
 		]
 
+		set-checkmarks: function [ 
+			{VID cell-checkbox-for-row-selection object support}
+			face [object!] {This is a VID face. face/parent = table-obj}
+			event [event! integer!]
+			row-list [block! none!]
+			/set-all 
+			/every {action against everything}
+			/off
+		][
+			
+			addr: face/extra/data-addr
+			tbl-obj: face/parent
+			if value? '-target-vid-object- [ -target-vid-object-/visible?: false ]
+			rows: either every [ tbl-obj/default-row-index ][tbl-obj/row-index ]
+			if set-all [
+				foreach i rows [
+					if not find table-obj/frozen-rows i [
+						cell-name: to-lit-word rejoin [ "cell" addr/x "x" i ]
+						tbl-obj/vid-state/:cell-name: either off [#(false) ] [#(true)]
+					]
+				]					
+			]
+			tbl-obj/actors/fill table-obj  
+		]
+		
+		get-row: function [ 
+			{Return the full data row}
+			row-num [integer!]
+		][
+			row-data: pick table-obj/table-data row-num
+			row-collect: copy []
+			foreach c table-obj/col-index [
+				if c > 0 [
+					append/only row-collect (pick row-data c)
+				]	
+			]
+			return row-collect
+		]
+		
+		get-checked-rows: function [
+			{Returns rows of data that have been checked off by the 'cell-checkbox-for-row-selection' overlay}
+			face [object!]	
+			col-id [integer! string!]
+			/only {returns row indices only}
+		][
+			if not checked-rows: get-checked-indices face col-id [ exit ]
+			checked-rows: sort checked-rows
+			if only [ return checked-rows ]
+			results: copy []
+			foreach row checked-rows [
+				append/only results get-row row
+			]
+			return results
+		]
+		
+		export-checks-to-clip: function [ 
+			face [object!] {This is a VID Object/ not the table}
+			event [event!]
+		][
+			tbl-obj: face/parent
+			checked-rows: sort tbl-obj/actors/get-checked-indices tbl-obj face/extra/data-addr 	
+			results: copy []
+			foreach row checked-rows [
+				append/only results get-row row
+			]
+			write-clipboard mold results 
+		]
+		
+		repop-drop-list-data: function [ face [object!] event [event!]][	;-- face here is a vid object
+			tbl-obj: face/parent
+			col: face/extra/data-addr/x
+			if find keys-of table-obj/vid-overlays col [
+				-vid-code-: load tbl-obj/vid-overlays/:col/code/1 
+				-vid-code-/data: copy get-column-data tbl-obj col
+				tbl-obj/vid-overlays/:col/code: reduce [ mold/only -vid-code- ]
+				tbl-obj/actors/fill tbl-obj				
+			]
+		]
+		
+		edit-drop-list-data: function [ face [object!] event [event!]][	;-- face here is the vid object
+			tbl-obj: face/parent
+			col: face/extra/data-addr/x
+			if find keys-of table-obj/vid-overlays col [ 
+				-vid-code-: load tbl-obj/vid-overlays/:col/code/1 
+				data-block: -vid-code-/data 
+				if req-res: request-array rejoin [ "Setting drop-list items for column " col ] data-block [
+					
+					-vid-code-/data: req-res
+					tbl-obj/vid-overlays/:col/code: reduce [ mold/only -vid-code- ]
+					tbl-obj/actors/fill tbl-obj
+				]
+			]
+		]
+
 		fill: function [
-			face [object!] /only dim [word!]
+			face [object!] 
+			/only dim [word!]
+			/extern table-obj "Make table-obj globally available" 
 		][
 			recycle/off
 			system/view/auto-sync?: off
-
+			face/vid-targets: copy []
 			py0: 0
 			draw-y: 0
 			index-y: 0
 			while [all [py0 < face/size/y index-y < face/total/y]][
 				draw-y: draw-y + 1            ; Skim through draw rows; which number?
 				frozen?: draw-y <= face/frozen/y   			; Is it frozen?
-				index-y: get-index-row face draw-y 		; Corresponding index row
-				data-y: get-data-row face draw-y   		; Corresponding data row
-				draw-row: face/draw/:draw-y   			; Actual draw-row
-				unless block? draw-row [      			; Add new row if missing
+				index-y: get-index-row face draw-y 			; Corresponding index row
+				data-y: get-data-row face draw-y   			; Corresponding data row
+				draw-row: face/draw/:draw-y   				; Actual draw-row
+				unless block? draw-row [      				; Add new row if missing
 					insert/only at face/draw draw-y draw-row: copy [] ; Make an empty row
-					;-- self/marks: next marks    ; Move marks-pointer further by one (new row before it)
 					face/marks: next face/marks    ; Move marks-pointer further by one (new row before it)
 				]
 				sy: get-row-height face data-y frozen? ;Row height is used in each cell
 				py1: to-integer ( py0 + sy )   ; Accumulative height
 
 				px0: 0                        ; Start from leftmost cell
+				
 				repeat draw-x face/frozen/x [      ; Render frozen cells first
 					index-x: get-index-col face draw-x ; Which index is given draw column
-					px0: to-integer set-cell face draw-row data-y index-y index-x draw-y draw-x true px0 py0 py1 ;last: frozen
+					px0: to-integer set-table-cell face draw-row data-y index-y index-x draw-y draw-x true px0 py0 py1 ;last: frozen
 				]
 
 				grid-row: skip draw-row face/frozen/x ; Move index to unfrozen cells
 				grid-y: draw-y - face/frozen/y
-				set-cells face grid-row data-y index-y grid-y frozen? py0 py1
+				set-cells face grid-row data-y index-y grid-y frozen? py0 py1 
 				py0: py1
 			]
 			; Move cells in unused rows outside of visible borders
@@ -1009,10 +2159,12 @@ tbl: [
 			recycle/on
 			face/draw: face/draw
 			auto-save face
+			
 		]
 
 		ask-code: function [/with default /txt deftext][
 			view [
+				Title "User Input Required"
 				below text "Code:"
 				code: area 400x100 focus with [
 					case [
@@ -1028,6 +2180,8 @@ tbl: [
 
 		; EDIT
 
+
+
 		make-editor: func [table [object!]][
 			append table/parent/pane layout/only compose/deep [
 				at 0x0 tbl-editor: field hidden with [
@@ -1037,7 +2191,6 @@ tbl: [
 						edit-mode?: false
 					]
 				] 
-				;-- flags: [ none ] 
 				on-key-down [
 					switch event/key [
 						#"^M" [ ;-- enter
@@ -1048,9 +2201,9 @@ tbl: [
 							face/extra/table/change-state: 'after
 							do-actor face/extra/table none 'change
 							face/extra/table/change-state: 'before
-							face/extra/table/actors/hot-keys/feed face/extra/table #(none) direction
+							table-obj/actors/hot-keys/feed face/extra/table #(none) direction
 						]
-						#"^[" [ ;esc
+						#"^[" [ ;-- ESC 
 							append clear face/text face/options/text
 							face/visible?: no
 							set-focus face/extra/table
@@ -1059,7 +2212,6 @@ tbl: [
 							face/extra/table/change-state: 'before							
 						]
 						down  [
-							;-- show-editor face/extra/table face/extra/cell + 0x1
 							face/visible?: no
 							update-data face (table)
 							set-focus face/extra/table
@@ -1069,7 +2221,6 @@ tbl: [
 							face/extra/table/actors/hot-keys/feed face/extra/table #(none) 'down
 						]
 						up [
-							;-- show-editor face/extra/table face/extra/cell - 0x1
 							face/visible?: no
 							update-data face (table)
 							set-focus face/extra/table
@@ -1113,8 +2264,8 @@ tbl: [
 			event [event! none!]
 			/edit-mode
 		][
-			either face/tbl-editor [
-				if tbl-editor/visible? [
+			either face/tbl-editor <> [] [
+				if face/tbl-editor/visible? [
 					update-data tbl-editor face 	;Make sure field is updated according to correct type
 					face/draw: face/draw     		;Update draw in case we edited a field and didn't enter
 				]
@@ -1125,19 +2276,52 @@ tbl: [
 			show-editor/:edit-mode face cell
 		]
 
+		is-read-only?: function [ 
+			face [object!] 
+			addr [pair!]
+			/quiet
+		][
+			fnd-x: find face/read-only-cols addr/x
+			fnd-y: find face/read-only-rows addr/y
+			if all [
+				any [ fnd-x fnd-y ]
+				all [ 
+					(y-not: not find face/frozen-rows addr/y)
+					(x-not: not find face/frozen-cols addr/x)
+				]
+			][
+				typ: rejoin [ either fnd-x [ "Column"][""] either all [ fnd-x fnd-y ] [ " and " ] [""] either fnd-y [ "Row"] [""]]
+				msg-ext: either find (keys-of face/vid-overlays) addr/x [
+					"This cell can be changed using the GUI widget supplied or for advanced users," newline "Press Shift + F2 on this cell to edit its' contents."
+				][
+					""
+				]
+				if not quiet [
+					status-msg rejoin [ "This cell is part of a read-only " typ ". Be careful about changing it manually." newline  msg-ext ]
+				]
+				return true
+			]
+			return false
+		]
+
 		show-editor: function [
 			face [object!] 
 			cell [pair!]
 			/with with-char [char! string!]
-			/edit-mode 
+			/edit-mode
+			/no-focus 
 		][
 			
 			face/tbl-editor/extra/edit-mode?: :edit-mode 
 			addr: get-data-address face cell
 			col: addr/x
 			ofs:  get-cell-offset face cell
+			quiet: either no-focus [ true ][ false ]
+			if is-read-only?/:quiet face addr [ 
+				face/tbl-editor/extra/table: face
+				exit 
+			]			
 			either col <> 0 [
-				;if auto [col: col + 1]
 				face/tbl-editor/extra/table: face                      ;Reference to table itself
 				txt: switch/default face/col-type/:col [
 					image! [
@@ -1155,21 +2339,27 @@ tbl: [
 						true [face/dummy]
 					]
 				]
-				face/tbl-editor/extra/addr: addr                       ;Register data address
-				face/tbl-editor/extra/cell: cell                       ;Register draw-cell address
-				fof: to-pair face/offset                          ;Compensate offset for VID space
+				face/tbl-editor/extra/addr: addr                    ;Register data address
+				face/tbl-editor/extra/cell: cell                    ;Register draw-cell address
+				fof: to-pair face/offset                          	;Compensate offset for VID space
 				either with [
-					edit/with face fof + ofs/1 ofs/2 - ofs/1 txt with-char
+					edit/with/:no-focus face fof + ofs/1 ofs/2 - ofs/1 txt with-char
 				][
-					edit face fof + ofs/1 ofs/2 - ofs/1 txt	
+					edit/:no-focus face fof + ofs/1 ofs/2 - ofs/1 txt	
 				]
 				
-			][face/tbl-editor/visible?: no]
+			][
+				face/tbl-editor/visible?: no
+			]
 		]
 
+		status-msg: function [ msg ][
+		    print msg
+		]	
+		
 		hide-editor: function [face [object!]] [
 			if all [
-				face/tbl-editor 
+				face/tbl-editor
 				face/tbl-editor/visible?
 			] [face/tbl-editor/visible?: no]
 		]
@@ -1215,7 +2405,7 @@ tbl: [
 						y: pick face/row-index my: r1 + (ny * y-cf)
 						repeat nx (absolute x-diff) + 1 [
 							x: pick face/col-index mx: c1 + (nx * x-cf)
-							append out change-to-address1 x y mx my
+							append out change-to-address face x y mx my
 						]
 					]
 					out
@@ -1223,7 +2413,7 @@ tbl: [
 			|	change ["R" copy r int "C" copy c int | "C" copy c int "R" copy r int] (
 					y: pick face/row-index r: to-integer r
 					x: pick face/col-index c: to-integer c
-					change-to-address2 x y c r
+					change-to-address face x y c r
 				)
 			| 	change ["R" copy r int any ws #":" any ws "R" copy r2 int] (
 					r1: to-integer r
@@ -1235,14 +2425,14 @@ tbl: [
 					x: addr/x ;pick face/col-index addr/x
 					repeat ny (absolute y-diff) + 1 [
 						y: pick face/row-index my: r1 + (ny * y-cf)
-						append out change-to-address3 x y index? find face/col-index x my
+						append out change-to-address face x y index? find face/col-index x my
 					]
 					out
 				)
 			|	change ["R" copy r int] (
 					x: addr/x ;pick face/col-index addr/x
 					y: pick face/row-index r: to-integer r
-					change-to-address4 x y index? find face/col-index x r
+					change-to-address face x y index? find face/col-index x r
 				)
 			| 	change ["C" copy c int any ws #":" any ws "C" copy c2 int] (
 					c1: to-integer c
@@ -1254,31 +2444,66 @@ tbl: [
 					y: addr/y
 					repeat nx (absolute x-diff) + 1 [
 						x: pick face/col-index mx: c1 + (nx * x-cf)
-						append out change-to-address5 x y mx index? find face/row-index y
+						append out change-to-address face x y mx index? find face/row-index y
 					]
 					out
 				)
 			|	change ["C" copy c int] (
 					x: pick face/col-index c: to-integer c
 					y: addr/y
-					change-to-address6 x y c index? find face/row-index y
+					change-to-address face x y c index? find face/row-index y
 				)
 			|	skip
 			]]
 		]
 
-		update-data: function [face [object!] table-face [object!]][; face is edited field here
-			switch type?/word addr2: addr: face/extra/addr [ ; This is data-address
+		inject-update: function [ 
+			face [object!] 
+			data-addr [pair!]
+			draw-addr [pair!]
+			data 
+		][
+			face/table-data/(data-addr/y)/(data-addr/x): data
+			unless (face/tbl-editor <> []) [make-editor face] 
+			show-editor/no-focus face draw-addr 
+			face/tbl-editor/text: to-string data
+			
+			face/tbl-editor/extra/addr: data-addr 
+			face/tbl-editor/extra/cell: draw-addr 
+			face/actors/update-data face/tbl-editor face 
+			fill face
+		]
+		
+		get-col-type: function [
+			face [object!] 
+			col-num [integer!]
+		][
+			len-data: length? face/table-data
+			repeat row-num len-data [
+				if not find face/frozen-rows row-num [
+					return type? face/table-data/:row-num/:col-num
+				]
+			]
+			return none 
+		]
+
+		update-data: function [
+			face [object!] ;-- edited field
+			table-face [object!]
+		][
+			switch type?/word addr2: addr: face/extra/addr  [ ;-- This is a data-address
 				pair! [
 					case [
 						addr/y > 0 [;Don't update auto-row
 							case [
 								addr/x > 0 [ ; Don't update auto-col
-									type: type? table-face/table-data/(addr/y)/(addr/x)
+									type: type? val: table-face/table-data/(addr/y)/(addr/x)
+									if (to-string type) = "none" [
+										type: get-col-type table-face addr/x
+									]
 									;if face/extra/table/options/auto-col [addr2/x: addr/x + 1]  ;@@ ??
 									table-face/table-data/(addr/y)/(addr/x): switch/default table-face/col-type/(addr2/x) [
 										logic!      [
-											;-- tx: attempt [get face/data]
 											either any [
 												addr/x = table-face/frozen/x
 												addr/y = table-face/frozen/y
@@ -1296,16 +2521,22 @@ tbl: [
 									][
 										;-- default 
 										tx: face/text either none! = type [
-												tx
+											tx
+										][
+											either conv-res: attempt [
+												cast-to-datatype type tx
 											][
-												to type tx
+												conv-res
+											][
+												status-msg rejoin [ "Error converting " mold tx " to datatype " mold type ]
+												tx 
 											]
+										]
 									]
 									cell:  face/extra/cell   ; This is draw-cell address
 									draw-cell: face/extra/table/draw/(cell/y)/(cell/x)
 									switch/default table-face/col-type/(addr2/x) [
 										logic! [
-											;-- draw-cell/11/3: form either tx [table-face/true-char][table-face/false-char]
 											either any [
 												addr/x = table-face/frozen/x
 												addr/y = table-face/frozen/y
@@ -1313,7 +2544,8 @@ tbl: [
 												;-- allowing frozen/header cell to be modified with plain text
 												draw-cell/11/3: to-string face/data
 											][
-												draw-cell/11/3: form either tx [table-face/true-char][table-face/false-char]	
+												;draw-cell/11/3: form either tx [table-face/true-char][table-face/false-char]	
+												draw-cell/11/3: form either tx ["true"]["false"]	
 											]
 										]
 										draw   [
@@ -1329,13 +2561,18 @@ tbl: [
 												draw-cell/11: compose [image (ico) (draw-cell/9)]
 											]
 										]
-									][draw-cell/11/3: tx]
+										vid-repeating [
+											;-- no drawing needed 
+										]
+									][
+										draw-cell/11/3: tx
+									]
 									;Update virtual rows and cols
 									system/view/auto-sync?: off
 									foreach [row vr] table-face/virtual-rows [
 										if code: vr/default [
-											repeat gx table-face/total/x - face/top/x [
-												index-x: face/top/x + gx
+											repeat gx table-face/total/x - table-face/top/x [
+												index-x: table-face/top/x + gx
 												col: table-face/col-index/:index-x
 												if not vr/source/:col [
 													expand-virtual table-face cy: copy code as-pair col row
@@ -1352,10 +2589,9 @@ tbl: [
 									]
 									foreach [col vc] table-face/virtual-cols [
 										if code: vc/default [
-											repeat gy table-face/total/y - face/top/y [
-												index-y: face/top/y + gy
-												row: table-
-												face/row-index/:index-y
+											repeat gy table-face/total/y - table-face/top/y [
+												index-y: table-face/top/y + gy
+												row: table-face/row-index/:index-y
 												if not vc/source/:row [
 													expand-virtual table-face cx: copy code as-pair col row
 													vc/data/:row: do bind load/all cx self
@@ -1414,7 +2650,7 @@ tbl: [
 					]
 				]
 			]
-			fill face/extra/table ;Added temporarily for quick refreshing to update virtual rows
+			fill face/extra/table 
 		]
 
 		auto-save: function [ face [object!] ][
@@ -1432,6 +2668,7 @@ tbl: [
 			sz [pair!] 
 			txt [string!]
 			/with with-char [char! string!]
+			/no-focus
 		][
 			if with [ 
 				txt: copy to-string with-char
@@ -1442,8 +2679,13 @@ tbl: [
 			face/tbl-editor/offset:    ofs
 			face/tbl-editor/size:      sz
 			face/tbl-editor/text:      txt
-			face/tbl-editor/visible?:  yes
-			win/selected:         face/tbl-editor
+			either no-focus [ 
+				face/tbl-editor/visible?: no 
+			][ 
+				face/tbl-editor/visible?: yes 
+				win/selected: face/tbl-editor
+			]
+			
 			if with [
 				face/tbl-editor/selected: 2x2
 				set-focus face/tbl-editor
@@ -1454,7 +2696,7 @@ tbl: [
 			col: get-col-number face event
 			case [
 				col > 0 [ ; Don't edit auto-col
-					if code: ask-code [
+					if code: request-multiline-text "Enter a Red function that takes a single argument.^/Omit the argument and the value of the cell will be put in it's place.^/The results of the function will be placed back into the cell." [
 						code: load/all code
 						code: back insert next code '_
 						foreach i at face/row-index face/top/y + 1 [
@@ -1492,20 +2734,316 @@ tbl: [
 				]
 			]
 		]
+		
+		edit-overlay: function [face [object!] event [event! integer!]][
+			set [ 'data-addr 'draw-addr ] get-data-address/both face face/pos
+			
+			col-num: data-addr/x 
+			
+			
+			case [
+				all [
+					vid-ovr: face/vid-overlays/:col-num
+					in face/vid-lib/(to-word vid-ovr/id) 'on-edit 
+				][
+					do bind load/all (copy face/vid-lib/(to-word vid-ovr/id)/on-edit) face/actors 
+				]
+				any [ 
+					code-over: face/code-overlays/:col-num
+					vid-over: face/vid-overlays/:col-num
+				][
+					advanced-cell-edit/address/:code-over/:vid-over face data-addr draw-addr
+				]
+				true [
+					status-msg rejoin [ {There are NOT any overlays applied to column } index? find face/col-index col-num ] 
+				]				
+			]
+		]
+		
+		clear-overlay: function [
+			face [object!]
+			col-num [integer!]
+		][
+			case/all [		
+				face/code-overlays/(col-num) [
+					remove/key face/code-overlays col-num
+					clear-vid-decor face	
+				]
+				face/vid-overlays/(col-num) [
+					remove/key face/vid-overlays col-num
+					clear-vid-decor face
+				]
+				face/virtual-cols/(col-num) [
+					key-list: exclude (keys-of face/virtual-cols/(col-num)) [ addr default type source code data ]
+					face/virtual-cols/(col-num)/default: none
+					face/virtual-cols/(col-num)/type: 'code
+					foreach key key-list [
+						face/virtual-cols/(col-num)/(key): ""
+					]
+					foreach typ [ source code data ] [
+						foreach k skip (keys-of face/virtual-cols/:col-num/:typ ) 1 [
+							remove/key face/virtual-cols/(col-num)/(typ) k
+						]
+					]					
+				]					
+			]
+		]
+		
+		remove-overlay: function [face [object!] event [event!]][
+			col-num: get-col-number face event
+			clear-overlay face col-num
+			fill face
+		]
+		
+		no-header?: function [ face ][
+			either face/frozen-rows = [] [ 
+				request-message "The current table needs a frozen row to act as a header.^/Freeze the top row of the current table and try again." 
+				return #(true)
+			][
+				return #(false)
+			]
+		]
+		
+		col-is-datatype?: function [
+			face [object!]
+			datatype [string!] "Using string name of datatype"
+			col-num [integer!]
+		][
+			foreach i face/row-index [
+				if not find table-obj/frozen-rows i [
+					datatype-string: to-string type? cell-val: face/table-data/:i/:col-num
+					if datatype-string = "word" [
+						datatype-string: if any [ cell-val = 'true cell-val = 'false ][ "logic" ]
+					]
+					if datatype-string <> datatype [ return #(false) ]							
+				]
+			]		
+			return #(true)
+		]	
+		
+		cast-column: function [
+			{convert all column data to a specific datatype}
+			face [object!]
+			datatype [string!] "Using string name of datatype"
+			col-num [integer!]
+		][
+			index: 1 
+			data-len: length? face/table-data
+           	either error? err: try/all  [
+				converter: get to-word rejoin [ "to-valid-" datatype ]
+				while [index <= data-len] [
+					if not find face/frozen-rows index [
+						face/table-data/:index/:col-num: converter face/table-data/:index/:col-num
+					]
+					index: index + 1
+				]             
+                true ;-- try return value
+            ][
+        		return false
+            ][
+                return true
+            ]			
+		]
+		
+		good-col-datatype?: function [ 
+			face [object!]
+			lib-config [object!]
+			col-num [integer!]
+			/force
+		][
+			if not in lib-config 'datatype [ return #(true) ]
+			datatype: lib-config/datatype
+			if col-is-datatype? face datatype col-num [
+				face/col-type/:col-num: to-word rejoin [ lib-config/datatype "!" ]	
+				return #(true)
+			]
+			if not force [
+				if not req-res: request-yes-no rejoin [ "All of the contents of Column " col-num " are NOT of the datatype '" datatype "'. This is a pre-requisite for this Overlay to work properly. Do you want to force all of the data in the column to be converted to '"datatype "'?"][
+					return #(false)
+				]
+			]
+			either cast-column face datatype col-num [
+				face/col-type/:col-num: to-word rejoin [ lib-config/datatype "!" ]		
+				fill face 
+				return #(true)	
+			][
+				return #(false)
+			]
+		]
+
+				
+		set-overlay-type: function [
+			face [object!] 
+			event [event!]
+			/inject type* [word!] col-num* [integer!] id* [string!]
+			/pre-built
+			/append {part of an append process. Not editable afterwards}
+		][
+			if no-header? face [ exit ]
+			either inject [
+				ovr-type: type*
+				col-num: col-num*				
+			][
+				ovr-type: event/picked
+				col-num: get-col-number face event				
+			]
+
+			set [ 'cell-prefix 'virtual? ] either positive? col-num [["data-" #(false)] ][["cell-" #(true)]]
+			switch ovr-type [
+				set-overlay-code [
+					either inject [
+						code-id: to-get-word id*						
+					][
+						code-listing: collect [ 
+							foreach item (keys-of face/code-lib) [
+								keep to-string item 
+							]
+						]
+						either req-res: request-list "Select a Code Overlay" code-listing [
+							code-id: to-get-word req-res
+						][
+							exit
+						]
+					]
+					clear-overlay face col-num
+					face/code-overlays/(col-num): copy face/code-lib/(code-id) 
+					code-lib-conf: copy face/code-lib/(code-id)
+					
+					if all [ not virtual? not pre-built ]  [					
+						if not good-col-datatype? face code-lib-conf col-num [ 
+							request-message "No Overlay Changes made."
+							exit 
+						]			
+					]
+					if all [ not virtual? pre-built ] [
+						if not good-col-datatype?/force face code-lib-conf col-num [ 
+							request-message "No Overlay Changes made."
+							exit 
+						]						
+					]					
+							
+					if virtual? [
+						virt-config: deep-copy face/overlay-config/(to-get-word code-id)
+						if face/virtual-cols/(col-num)/source <> #[] [
+							;-- copy pre-existing header data
+							virt-config/source/1: copy face/virtual-cols/(col-num)/source/1 
+							virt-config/code/1: copy face/virtual-cols/(col-num)/code/1 
+							virt-config/data/1: copy face/virtual-cols/(col-num)/data/1 
+						]
+						face/virtual-cols/:col-num: virt-config						
+					]
+				]
+				set-overlay-vid [
+					either inject [
+						vid-id: to-get-word id*							
+					][
+						vid-listing: collect [ 
+							foreach item (keys-of face/vid-lib) [ 
+								str-item: to-string item
+								if (copy/part str-item 5) = cell-prefix [
+									keep str-item
+								]
+							]
+						]
+						either req-res: request-list "Select a VID Overlay" vid-listing [
+							vid-id: to-word req-res
+						][
+							exit
+						]
+					]
+					clear-overlay face col-num
+					vid-lib-conf: copy face/vid-lib/(vid-id)
+					if all [ not virtual? not pre-built ] [
+						if not good-col-datatype? face vid-lib-conf col-num [ 
+							request-message "No Overlay Changes made."
+							exit 
+						]
+					]
+					if all [ not virtual? pre-built ] [
+						if not good-col-datatype?/force face vid-lib-conf col-num [ 
+							request-message "No Overlay Changes made."
+							exit 
+						]						
+					]
+					
+					if in vid-lib-conf 'when-applied [
+						vid-lib-conf: face/actors/(to-word vid-lib-conf/when-applied)/:pre-built face col-num						
+					]
+					if virtual? [
+						virt-config: deep-copy face/overlay-config/(to-get-word vid-id)
+						if face/virtual-cols/(col-num)/source <> #[] [
+							;-- copy pre-existing header data
+							virt-config/source/1: copy face/virtual-cols/(col-num)/source/1 
+							virt-config/code/1:   copy face/virtual-cols/(col-num)/code/1 
+							virt-config/data/1:   copy face/virtual-cols/(col-num)/data/1 
+						]
+						face/virtual-cols/:col-num: copy virt-config						
+					]
+					if not virtual? [
+						set-access/read-only/col face col-num
+						
+					]
+					face/vid-overlays/:col-num: make object! [ id: "" code: ""]
+					face/vid-overlays/:col-num/id: copy vid-lib-conf/id
+					face/vid-overlays/:col-num/code: copy vid-lib-conf/code					
+					
+				]
+			]
+			fill face
+			if all [
+				code-id = 'cell-New-Code-Overlay 
+				not append
+			][
+				edit-overlay face col-num
+			]
+		]
+		
+		set-col-align: function [face [object!] event [event! integer!] align-type [word!]][
+			col-num: either event? event [get-col-number face event][event]
+			either align-type = 'left [
+				remove/key face/col-align col-num ;-- default is left-align
+			][
+				face/col-align/:col-num: align-type	
+			]
+			fill face
+		]
+		
 
 		set-col-type: function [face [object!] event [event! integer!] /only typ [word!]][
 			col: either event? event [get-col-number face event][event]
+			if col < 0 [
+				status-msg "Virtual Columns can NOT have their data Type set."
+				exit 
+			]
 			if not all [not only col = 0][
 				old-type: face/col-type/:col
 				face/col-type/:col: type: either event? event [event/picked][typ]
-				data: face/table-data
+				if not to-valid-logic 'data [
+					data: face/table-data 
+				]
 				forall data [
 					either block? data/1 [
 						if not find face/frozen-rows index? data [
 							data/1/:col: switch/default type [
 								draw do     [to block! any [data/1/:col face/dummy]]
 								load image! [load any [data/1/:col face/dummy]]
-								string!     [mold any [data/1/:col face/dummy]]
+								string!     [
+									either data/1/:col [
+										either string? data/1/:col [ data/1/:col ][ to-valid-string data/1/:col ]
+									][
+										face/dummy
+									]
+								]
+								vid-repeating  [
+									if not logic? data/1/:col [
+										any [data/1/:col face/dummy]
+									]
+								]				
+								code-repeating  [
+									if not logic? data/1/:col [
+										any [data/1/:col face/dummy]
+									]
+								]												
 								logic! [
 									case [
 										all [series? data/1/:col empty? data/1/:col][
@@ -1515,8 +3053,10 @@ tbl: [
 										all [string? data/1/:col  val: get/any to-word data/1/:col][
 											data/1/:col: either logic? val [val][false] ; Textual logic values get mapped
 										]
-										none? data/1:col [data/1/:col: false]
-										'else [data/1/:col: true]                       ; Should it be false instead?
+										none? data/1/:col [ data/1/:col: false ]
+										'else [
+											data/1/:col: false 		; Default to false
+										]                       
 									]
 								]
 								icon [form any [data/1/:col face/dummy]]
@@ -1581,18 +3121,61 @@ tbl: [
 
 		show-col: function [face [object!] event [event! none!]][]
 
+		get-col-count: function [ face [object!]][
+			real-cols: copy face/col-index 
+			remove-each c real-cols [ c < 1 ]
+			return (length? real-cols)
+		]
+
+		auto-increment: function [
+			col-name [string!]
+			col-num [integer!]
+			/init {initialize auto-increment state}
+		][
+			if init [
+				if req-res: request-text "Enter the integer that you want auto-increment to start at" [
+					incr-start: to-integer req-res
+				]
+				either fnd: find-in-array-at/with-index table-obj/auto-incr 1 col-num [
+					ndx: fnd/2
+					table-obj/auto-incr/:ndx: reduce [ col-num col-name incr-start ]		
+				][
+					append/only table-obj/auto-incr reduce [ col-num col-name incr-start ]		
+				]
+				exit
+			]
+			fnd: find-in-array-at/with-index table-obj/auto-incr 1 col-num
+			ndx: fnd/2
+			incr-start: table-obj/auto-incr/:ndx/3
+			table-obj/auto-incr/:ndx/3: (incr-start + 1)
+			return incr-start
+		]
+
 		add-new-row: function [face [object!]][
-			row: make block! face/total/x
-			repeat col face/total/x [
+			total-real: get-col-count face 
+			row: make block! total-real
+			repeat col total-real [
 				;if face/options/auto-col [col: col + 1] ;@@ ??? Should it?
-				content: any [
-					face/defaults/:col
-					all [
-						type: face/col-type/:col
+				content: case [
+					face/defaults/:col [ 
+						either series? face/defaults/:col [
+							do bind source-to-block face/defaults/:col face/actors
+						][
+							face/defaults/:col
+						]
+					]
+					type: face/col-type/:col [
 						switch/default type [
 							do draw image! [copy []]
 							load icon [none]
-						][make reduce type 0]
+							vid-repeating [copy ""]
+							code-repeating [copy ""]
+						][ 
+							dtype: to-string type
+							remove back tail dtype
+							cast-to-datatype dtype none
+						]		
+						
 					]
 				]
 				append/only row content
@@ -1604,11 +3187,11 @@ tbl: [
 		add-virtual-row: function [face [object!]][
 			x: face/total/x
 			vr: object [
-				addr: none
+				addr: #(none)
 				source: make map! x
 				code: make map! x
 				data: make map! x
-				default: none
+				default: #(none)
 			]
 			len: negate 1 + length? face/virtual-rows
 			face/virtual-rows/:len: vr
@@ -1619,17 +3202,19 @@ tbl: [
 		add-virtual-col: function [face [object!]][
 			y: face/total/y
 			vc: object [
-				addr: none
 				source: make map! y
 				code: make map! y
 				data: make map! y
 				default: none
+				type: 'code
+				id: copy ""
 			]
 			len: negate 1 + length? face/virtual-cols
 			face/virtual-cols/:len: vc
 			face/total/x: face/total/x + 1
 			len
 		]
+
 
 		refresh-view: func [face [object!]][
 			set-last-page face
@@ -1644,12 +3229,14 @@ tbl: [
 			add-new-row face
 			insert/only at face/row-index r face/total/y
 			refresh-view face
+			fill face 
 		]
 
 		append-row: function [face [object!]][
 			add-new-row face
 			append face/row-index face/total/y
 			refresh-view face
+			fill face
 		]
 
 		insert-virtual-row: function [face [object!] event [event! integer!]][
@@ -1665,27 +3252,74 @@ tbl: [
 			append face/row-index vr
 			refresh-view face
 		]
-
-		insert-col: function [face [object!] event [event! none!]][
-			dc: get-draw-col face event
-			c: get-index-col face dc
-			repeat i face/total/y [append face/table-data/:i none]
-			face/total/x: face/total/x + 1
-			insert/only at face/col-index c face/total/x
-			refresh-view face
+		
+		remove-vid-col-decor: function [
+			face [object!]
+			col [integer!]
+			/delete {delete entire entry}
+		][
+			row-len: ((length? face/draw ) - 9)
+			r: 1
+			while [r <= row-len] [
+				either delete [
+					remove at (pick face/draw r) col							
+				][
+					if ( cell: face/draw/:r/:col ) [
+						remove/part (skip cell 11) length? cell	
+					]
+				]
+				r: r + 1	
+			]
 		]
 
-		append-col: function [face [object!]][
+		clear-vid-decor: function [
+			face [object!]
+		][
+			if all [
+				block? face/draw/1
+				max-cols: length? face/draw/1
+			][
+				col: 1
+				while [col <= max-cols ][
+					remove-vid-col-decor face col 
+					col: col + 1				
+				]
+			]
+		]
+
+		insert-col: function [
+			face [object!] 
+			event [event! none!]
+			/ret-col-num
+		][
+			dc: get-draw-col face event
+			c: get-index-col face dc
+			clear-vid-decor face
+			if value? '-target-vid-object- [ -target-vid-object-/visible?: false ]
+			
 			repeat i face/total/y [append face/table-data/:i none]
 			face/total/x: face/total/x + 1
-			append face/col-index face/total/x
+			insert/only at face/col-index c ( nc: (get-max face/col-index) + 1)
 			refresh-view face
+			if ret-col-num [ return nc ]
+		]
+
+		append-col: function [
+			face [object!]
+			/ret-col-num
+		][
+			repeat i face/total/y [append face/table-data/:i none]
+			face/total/x: face/total/x + 1
+			append face/col-index ( nc: (get-max face/col-index) + 1)
+			refresh-view face
+			if ret-col-num [ return nc ]
 		]
 
 		insert-virtual-col: function [face [object!] event [event! integer!]][
 			dc: get-draw-col face event
 			ic: get-index-col face dc
 			vc: add-virtual-col face
+			clear-vid-decor face
 			insert/only at face/col-index ic vc
 			refresh-view face
 		]
@@ -1693,6 +3327,161 @@ tbl: [
 		append-virtual-col: function [face [object!]][
 			vc: add-virtual-col face
 			append face/col-index vc
+			refresh-view face
+		]
+		
+		make-overlay-config: function [ face [object!] ][
+			face/overlay-config: #[]
+			face/overlay-config/cell-checkbox-for-row-selection: make object! [	
+			    source: #[
+			        1 {"Rows Selected"}
+			        2 "{cell-checkbox-for-row-selection}"
+			    ]
+			    code: #[
+			        1 ["Rows Selected"]
+			        2 ["cell-checkbox-for-row-selection"]
+			    ]
+			    data: #[
+			        1 "Rows Selected"
+			        2 "cell-checkbox-for-row-selection"
+			    ]
+			    default: none
+			    type: "vid-repeating"
+			    id: "cell-checkbox-for-row-selection"
+			]
+			
+			face/overlay-config/cell-button: make object! [	
+			    source: #[
+			        1 {"Show Row Data"}
+			    	2 {{cell-button "See Row Data" ^/^-on-click [ ^/^-^-print mold get-row row-num^/^-]}}
+			    ]
+			    code: #[
+			        1 ["Show Row Data"]
+			        2 [{cell-button "See Row Data" ^/^-on-click [ ^/^-^-print mold get-row row-num^/^-]}]
+			    ]
+			    data: #[
+			        1 "Show Row Data"
+			        2 {cell-button "See Row Data" ^/^-on-click [ ^/^-^-print mold get-row row-num^/^-]}
+			    ]
+			    default: none
+			    type: "vid-repeating"
+			    id: "cell-button"
+			]
+
+			face/overlay-config/cell-code-example: make object! [	
+			    source: #[
+			        1 {"Code Example"}
+			    ]
+			    code: #[
+			        1 ["Code Example"]
+			    ]
+			    data: #[
+			        1 "Code Example"
+			    ]
+			    default: none
+			    type: "code-repeating"
+			    id: "cell-code-example"
+			]
+				
+			face/overlay-config/cell-New-Code-Overlay: make object! [	
+			    source: #[
+			        1 {"New Code"}
+			    ]
+			    code: #[
+			        1 ["New Code"]
+			    ]
+			    data: #[
+			        1 "New Code"
+			    ]
+			    default: none
+			    type: "code-repeating"
+			    id: "cell-New-Code-Overlay"
+			]					
+			
+			face/overlay-config/data-checkbox-for-logic: make object! [	
+			    source: #[
+			        1 {"Checkbox"}
+			    	2 {{data-checkbox-for-logic}}
+			    ]
+			    code: #[
+			        1 ["Checkbox"]
+			        2 [{data-checkbox-for-logic}]
+			    ]
+			    data: #[
+			        1 "Checkbox"
+			        2 {data-checkbox-for-logic}
+			    ]
+			    default: none
+			    type: "vid-repeating"
+			    id: "data-checkbox-for-logic"
+			]		
+			face/overlay-config/data-drop-list: make object! [	
+			    source: #[
+			        1 {"Drop-list"}
+			    	2 {{data-drop-list}}
+			    ]
+			    code: #[
+			        1 ["Drop-list"]
+			        2 [{data-drop-list}]
+			    ]
+			    data: #[
+			        1 "Drop-list"
+			        2 {data-drop-list}
+			    ]
+			    default: none
+			    type: "vid-repeating"
+			    id: "data-drop-list"
+			]						
+		]
+		
+		
+		
+		place-pre-buit-col: function [
+			face [object!] 
+			event [event!]
+			/append
+		][
+			{Defaults to inserting a pre-built column}
+			if no-header? face [ exit ]
+			make-overlay-config face
+			cust-list: collect [ foreach item (keys-of face/overlay-config) [ keep to-string item ]]
+			either req-res: request-list-enhanced/size "Select a Custom Pre-Built Column" cust-list 230x200 [
+				custom-pre-built: face/overlay-config/(to-get-word req-res)
+			][
+				exit
+			]
+			either (copy/part req-res 4) = "cell" [	;-- cell-* for virtual cols
+				either append [
+					new-col: add-virtual-col face
+					system/words/append face/col-index new-col
+				][
+					dc: get-draw-col face event
+					ic: get-index-col face dc
+					new-col: add-virtual-col face
+					clear-vid-decor face
+					insert/only at face/col-index ic new-col								
+				]
+			][	;-- insert data col					
+				either append [
+					new-col: append-col/ret-col-num face 
+				][
+					new-col: insert-col/ret-col-num face event 	
+				]
+				
+				if custom-pre-built/type = "vid-repeating" [
+					if in face/vid-lib/(to-word custom-pre-built/id)	'datatype [
+						face/col-type/:new-col: to-word rejoin [ face/vid-lib/(to-word custom-pre-built/id)/datatype "!" ]		
+					]
+				]														
+				
+			]
+			overlay-type: case [
+				custom-pre-built/type = "code-repeating" [ 'set-overlay-code ]
+				custom-pre-built/type = "vid-repeating"  [ 'set-overlay-vid  ]
+			]
+			
+			set-overlay-type/inject/pre-built/:append face event overlay-type new-col req-res
+			set-access/read-only/col face new-col
 			refresh-view face
 		]
 
@@ -1731,20 +3520,89 @@ tbl: [
 			take/last face/default-row-index
 			refresh-view face
 		]
+		
+		step-num-keys: function [
+			{returns a map with the keys stepped up or down depending on comapator}
+			m [map!]
+			needle [integer!]
+			comparator [ block! ] {Usually key (> < =) needle comparison}
+			/down "flag to decrease key value"
+		][
+			mb: to-block m
+			step: either down [ -1 ] [ 1 ]
+			key: 0
+			forskip mb 2 [
+				key: mb/1 
+				if (do bind comparator 'key) [ 
+					mb/1: mb/1 + step 
+				]		
+			]
+			return to-map mb
+		]		
+
+		step-element-vals: function [ 
+			{step each element up/down in a series depending on the filter}
+			series [block!] {A flat series. Not block in block}
+			needle [integer!] {'needle value in filter}
+			filter [block!] {Filter Format: needle operator element . Where operator can be < > => =< }
+			/down "Step element value down 1. Default is step element up 1"
+			/skip skip-val "amount to skip within the series"
+		][
+			step: either down [ -1 ] [ 1 ]
+			skip-amt: either skip [ skip-val ] [ 0 ]
+			ndx: 1 + skip-amt
+			series-len: length? series
+			while [ ndx <= series-len ] [
+				element: series/:ndx
+				if (do bind filter 'element) [ 
+					series/:ndx: series/:ndx + step			 
+				]
+				ndx: ndx + 1 + skip-amt
+			]
+		]		
 
 		delete-col: function [face [object!] event [event!]][
 			dc: get-draw-col face event
 			ci: get-index-col face dc
 			cd: get-data-col face dc
-			if cd > 0 [
+			
+			remove/key face/col-type cd
+			remove/key face/vid-overlays cd 
+			take find face/read-only-cols cd
+			remove-vid-col-decor/delete face dc
+			clear-vid-decor face
+			clear-overlay face cd 
+			if value? '-target-vid-object- [ -target-vid-object-/visible?: false ]
+			
+			remove at face/col-index ci
+			remove/key face/sizes/x cd
+			if find face/frozen-cols cd [ unfreeze face 'x 	]
+			
+			either cd > 0 [			;-- Normal Cols ------------
+				face/col-type: step-num-keys/down face/col-type cd [ key > needle ]
+				face/vid-overlays: step-num-keys/down face/vid-overlays cd [ key > needle ] 
+				face/code-overlays: step-num-keys/down face/code-overlays cd [ key > needle ] 
+				step-element-vals/down face/read-only-cols cd [ needle < element ]				
+				face/sizes/x: step-num-keys/down face/sizes/x cd [ key > needle ]
 				foreach row face/table-data [either block? row [remove at row cd][break]]
-				remove at face/col-index ci
-				repeat i length? face/col-index [
-					if face/col-index/:i > cd [face/col-index/:i: face/col-index/:i - 1]
-				]
+				step-element-vals/down face/col-index cd [ needle < element ]	
 				take/last face/default-col-index
-				refresh-view face
+				remove/key face/defaults cd 
+				if fnd: find-in-array-at/with-index face/auto-incr 1 cd [
+					remove skip face/auto-incr (fnd/2 - 1)
+				]
+			][						;-- Virtual Cols --------------
+				remove/key face/virtual-cols cd
+				keys: keys-of face/vid-state 
+				foreach k keys [
+					if find (to-string k) rejoin [ "cell" cd ][
+						remove/key face/vid-state k
+					]		
+				]
 			]
+			if fnd: find face/col-names cd [ remove/part (skip fnd -1) 2 ]
+			step-element-vals/down/skip face/col-names cd [ needle < element ] 1 
+			refresh-view face
 		]
 
 		move-row: function [face [object!] event [event! integer!] step [word! integer!] /to][
@@ -1800,7 +3658,9 @@ tbl: [
 					]
 				]
 			]
+			clear-vid-decor face
 			move i: at face/col-index ci skip i step
+			set-column-names/only face 
 			fill face
 			show-marks face
 		]
@@ -1808,10 +3668,12 @@ tbl: [
 		; MARKS
 
 		set-new-mark: func [face [object!] active [pair!]][
-			append face/selected face/anchor: face/active
+			if value? '-target-vid-object- [ -target-vid-object-/visible?: false ]
+			append face/cells-selected face/anchor: face/active
 		]
 
 		mark-active: func [face [object!] cell [pair! none!] /extend /extra /index][
+
 			if none? cell [ exit ]
 			either index [
 				face/active: cell
@@ -1824,10 +3686,10 @@ tbl: [
 				case [
 					extend [
 						face/extend?: true
-						either '- = first skip tail face/selected -2 [
-							change back tail face/selected face/active
+						either '- = first skip tail face/cells-selected -2 [
+							change back tail face/cells-selected face/active
 						][
-							repend face/selected ['- face/active]
+							repend face/cells-selected ['- face/active]
 						]
 					]
 					extra  [
@@ -1836,7 +3698,7 @@ tbl: [
 					]
 					true   [
 						face/extra?: face/extend?: false
-						clear face/selected
+						clear face/cells-selected
 						set-new-mark face face/active
 					]
 				]
@@ -1851,7 +3713,7 @@ tbl: [
 				clear face/marks
 				face/extend?: face/extra?: false
 				face/anchor: face/active: face/pos: none
-				clear face/selected
+				clear face/cells-selected
 			]
 		]
 
@@ -1894,7 +3756,7 @@ tbl: [
 		show-marks: function [face [object!]][
 			system/view/auto-sync?: off
 			clear face/marks
-			parse face/selected [any [
+			parse face/cells-selected [any [
 				s: pair! '- pair! (
 					a: min s/1 s/3
 					b: max s/1 s/3
@@ -1949,14 +3811,14 @@ tbl: [
 			][
 				e: s/1
 				e/:dim: e/:dim + step
-				repend face/selected ['- e]
+				repend face/cells-selected ['- e]
 			]
 			show-marks face
 		]
 
 		color-selected: function [face [object!] color [tuple! word! none!]][
 			unless color [color: load ask-code]
-			parse face/selected [any [s:
+			parse face/cells-selected [any [s:
 				pair! '- pair! (
 					mn: (min s/1 s/3) - 1
 					mx: max s/1 s/3
@@ -1979,9 +3841,13 @@ tbl: [
 			fill face
 		]
 
-		name-selected: function [face [object!] name [word! none!]][
+		name-selected: function [
+			face [object!] 
+			name [word! none! string!]
+			/reload
+		][
 			unless name [name: ask-code]
-			face/names/:name: copy face/selected
+			if not reload [ face/names/:name: copy face/cells-selected ]
 			if block? items: face/menu/"Table"/"Select named range" [
 				repend items [name to-word name]
 			]
@@ -2161,6 +4027,8 @@ tbl: [
 				]
 			]
 			face/draw: face/draw
+			clear-vid-decor face
+			fill face
 		]
 
 		unfreeze: function [face [object!] dim [word!]][
@@ -2183,6 +4051,7 @@ tbl: [
 		]
 
 		adjust-border: function [face [object!] event [event! none!] dim [word!]][
+			face/pane: layout/only []
 			if face/on-border?/:dim > 0 [
 				ofs0: either dim = 'x [
 					face/draw/1/(face/on-border?/x)/7/x            ;box's actual end
@@ -2237,11 +4106,13 @@ tbl: [
 		]
 
 		scroll: function [face [object!] dim [word!] steps [integer!]][
-			if 0 <> step: set-scroller-pos face dim steps [
+			if 0 <> step: set-scroller-pos face dim steps [ ;-- set-scroller-pos won't update if return = 0
 				dif: calc-step-size face dim step
 				face/current/:dim: face/current/:dim + step
 				hide-editor face
+				if value? '-target-vid-object- [ -target-vid-object-/visible?: false ]
 				set-grid face
+				clear-vid-decor face 
 				fill face
 			]
 			step
@@ -2256,7 +4127,6 @@ tbl: [
 		]
 
 		set-scroller-pos: function [face [object!] dim [word!] steps [integer!]][
-
 			pos0: face/scroller/:dim/position
 			min-pos: face/top/:dim + 1
 			max-pos: face/scroller/:dim/max-size - face/last-page/:dim + pick [2 1] face/grid-offset/:dim > 0
@@ -2344,9 +4214,9 @@ tbl: [
 		copy-selected: function [face [object!] /cut ][
 			clear face/selected-data
 
-			face/selected-range: copy face/selected
+			face/selected-range: copy face/cells-selected
 			clpbrd: copy ""
-			parse face/selected [any [
+			parse face/cells-selected [any [
 				s: pair! '- pair! (
 					start: s/1
 					dabs: absolute df: s/3 - s/1
@@ -2421,7 +4291,13 @@ tbl: [
 		]
 
 		paste-selected: function [face [object!] /transpose ][
-			either single? face/selected [
+			if is-read-only? face to-pair 
+				reduce [ 
+					(face/pos/x + face/current/x - face/frozen/x) (face/pos/y + face/current/y - face/frozen/y) 
+				][ 
+				exit 
+			]
+			either single? face/cells-selected [
 				start: face/anchor
 				parse-selection face face/selected-range start
 			][
@@ -2434,17 +4310,17 @@ tbl: [
 				|	pair! (copied-size: copied-size + 1)
 				]]
 				selected-size: 0
-				parse face/selected [any [
+				parse face/cells-selected [any [
 					end
 				|	e:
 				|	pair! '- pair! (q: (absolute e/3 - e/1) + 1 selected-size: q/x * q/y + selected-size)
 				|	pair! (selected-size: selected-size + 1)
 				]]
 				either copied-size = selected-size [
-					start: face/selected/1
-					parse-selection face face/selected start
+					start: face/cells-selected/1
+					parse-selection face face/cells-selected start
 				][
-					print "Warning! Sizes do not match."
+					status-msg "Warning! Sizes do not match."
 				]
 			]
 			face/selected-data: head face/selected-data
@@ -2545,25 +4421,196 @@ tbl: [
 			/add
 		][
 			ri: which-index face event 'row
-			unless add [clear face/selected]
-			repend face/selected [as-pair 1 ri '- as-pair face/total/x ri]
+			unless add [clear face/cells-selected]
+			repend face/cells-selected [as-pair 1 ri '- as-pair face/total/x ri]
 			show-marks face
 		]
 
 		select-col: function [face [object!] event [event! integer!] /add][
 			ci: which-index face event 'col
-			unless add [clear face/selected]
-			repend face/selected [as-pair ci 1 '- as-pair ci face/total/y]
+			unless add [clear face/cells-selected]
+			repend face/cells-selected [as-pair ci 1 '- as-pair ci face/total/y]
 			show-marks face
 		]
 
 		select-name: function [face [object!] name [string!] /add][
-			unless add [clear face/selected]
-			append face/selected face/names/:name
+			unless add [clear face/cells-selected]
+			append face/cells-selected face/names/:name
 			show-marks face
 		]
 
-		; More helpers
+		set-virtual-col: function [ 
+			face [object!] 
+			event [event! integer!] 
+			type [ word! ] {Valid types: 'code 'VID}
+		
+		] [
+			col: switch type?/word event [
+				event!   [get-col-number face event]
+				integer! [face/col-index/:event]
+			]	
+			face/virtual-cols/:col/type: type
+			face/actors/fill face	
+		]
+		
+		state-to-array: function [
+			map-val [map!]
+			array-len [integer!]
+			name-pattern [block!] {ie: [ "cell-1x" 'index]  }
+		][
+			array: make block! array-len
+			repeat index array-len [
+				key-name: to-word rejoin reduce bind name-pattern 'array
+				append/only array reduce [ map-val/:key-name]
+			] 
+		]
+			
+		logic-to-integer: function [ 
+			{Converts value into an integer to represent logic for sorting purposes}
+			val [string! logic! word!]
+		][ ;-- built for speed
+			if val = #(true)  [ return  1 ]
+			if val = #(false) [ return  0 ]
+			if val = none 	  [ return -1 ]
+			if val = 'true 	  [ return  1 ]	
+			if val = 'false   [ return  0 ]	
+			if val = 'none 	  [ return -1 ]
+			return -1 
+		]
+						
+		get-checked-indices: function [ 
+			face [object!] 
+			address [pair! integer! string!]
+		] [
+			if integer? address [ address: as-pair address 1]
+			if string? address [ 
+				either col-num: system/words/select face/col-names address [
+					address: as-pair col-num 1	
+				][
+					status-msg rejoin [ "Unable to find column associated to :" mold address ". Operation failed."]
+					return none	
+				]
+				
+			]
+			states: get-matching-keys face/vid-state rejoin [ "cell" address/x ]
+			return results: collect [
+				foreach s states [
+					if face/vid-state/:s [
+						keep to-integer copy skip (find/reverse tail (to-string s) "x") 1		
+					]
+				]
+			]
+		]
+		
+		logic-to-sortable: function [ 
+			face [object!]
+			col [integer!]
+		][
+			
+			either col < 0 [ ;-- virtual-col sorting against /vid-state
+				len: (length? face/row-index)
+				target-data: append/only/dup make block! len [ -1 ] len ;-- init to (-1)  = none				
+				needle: rejoin [ "cell" col ]
+				n-len: (length? needle)
+				skip-len: n-len + 1
+				foreach [ k v ] face/vid-state [
+					ks: to-string k
+					if (copy/part ks n-len ) = needle [ 
+						y: to-integer copy skip ks skip-len
+						target-data/(y): reduce [ logic-to-integer v ]
+					]
+				]
+			][				;-- this is a normal data column 
+				target-data: copy []
+				foreach r face/table-data [
+					append/only target-data reduce [ logic-to-integer r/:col ]
+				]
+			]
+			return target-data
+		]
+		
+		get-column-data: function [ 
+			face [object!]
+			col [integer!]
+		][
+			skip-amt: either face/frozen-rows <> [] [ last face/frozen-rows ][ 0 ]
+			results: collect [
+				foreach i (skip face/table-data	skip-amt) [
+					keep i/:col					
+				]
+			]		
+			return unique results	
+		]
+		
+		setup-data-drop-list: function [ 
+			face [object!]
+			col [integer!]
+			/pre-built
+		][
+			ddl: copy/deep face/vid-lib/data-drop-list 
+			code: load ddl/code/1
+			either pre-built [
+				code/data: [ "Small" "Medium" "Large" ]
+				face/table-data/1/:col: "Pre-built drop-list"
+				foreach r ( skip face/row-index 1) [
+					face/table-data/:r/:col: first random code/data
+				]
+			][
+				code/data: copy get-column-data face col	
+			]
+			
+			ddl/code: reduce [ mold/only code ]
+			return ddl
+		]
+		
+		setup-cell-checkbox-for-row-selection: function [ 
+			face [object!]
+			col [integer!]
+			/pre-built ;-- not used just a placeholder for 'setup-* pattern
+		][
+			lib-entry: copy/deep face/vid-lib/cell-checkbox-for-row-selection
+			code: load lib-entry/code/1
+			lib-entry/code: reduce [ mold/only code ]
+			return lib-entry
+		]
+		
+		setup-data-checkbox-for-logic: function [ 
+			face [object!]
+			col [integer!]
+			/pre-built ;-- not used just a placeholder for 'setup-* pattern
+		][
+			lib-entry: copy/deep face/vid-lib/data-checkbox-for-logic
+			code: load lib-entry/code/1
+			lib-entry/code: reduce [ mold/only code ]
+			if pre-built [
+				face/table-data/1/:col: "Pre-blt data logic"
+			]
+			return lib-entry			
+		]
+
+		get-matching-keys: function [
+			map [ map!]
+			needle [string!]
+		][
+			keys: keys-of map
+			matches: collect [
+				foreach k keys [
+					if find to-string k needle [ keep k ]	
+				]
+			]
+			return matches 
+		]
+
+		get-virtual-col-key: function [ 
+			id [string!]
+		][
+			foreach [ key val ] face/virtual-cols [
+				if val/id = id [ 
+					return key
+				]
+			] 
+			return none
+		]		
 
 		on-sort: func [face [object!] event [event! integer!] /loaded /down /local col c fro idx found][
 			recycle/off
@@ -2578,14 +4625,24 @@ tbl: [
 				face/row-index: head face/row-index
 			][
 				either face/indices/x/:col [clear face/indices/x/:col][face/indices/x/:col: make block! face/total/y]
-				c: absolute col
+				target-data: face/table-data	
 				idx: skip head face/row-index face/top/y
+				c: absolute col				
+				if all [ 
+					vid-ovr: face/vid-overlays/:col 
+					in face/vid-lib/(to-word vid-ovr/id) 'on-sort
+				][
+					sort-func: to-word face/vid-lib/(to-word vid-ovr/id)/on-sort
+					target-data: face/actors/(sort-func) face col 
+					c: 1					
+				]
+				
 				sort/compare idx function [a b][
 					attempt [case [
-						all [loaded down][(load face/table-data/:b/:c) <= (load face/table-data/:a/:c)]
-						loaded           [(load face/table-data/:a/:c) <= (load face/table-data/:b/:c)]
-						down             [face/table-data/:b/:c <= face/table-data/:a/:c]
-						true             [face/table-data/:a/:c <= face/table-data/:b/:c]
+						all [loaded down][(load target-data/:b/:c) <= (load target-data/:a/:c)]
+						loaded           [(load target-data/:a/:c) <= (load target-data/:b/:c)]
+						down             [target-data/:b/:c <= target-data/:a/:c]
+						true             [target-data/:a/:c <= target-data/:b/:c]
 					]]
 				]
 				append face/indices/x/:col face/row-index
@@ -2616,12 +4673,13 @@ tbl: [
 			fill face
 			show-marks face
 		]
-
-		hot-keys: function [
+		
+		hot-keys: func [
 			face [object!] 
 			event [event! none!]
 			/feed fed-key [word!]
 		][
+			
 			abs-row: face/pos/y + face/current/y - face/frozen/y
 			
 			if feed [
@@ -2688,6 +4746,11 @@ tbl: [
 
 
 			
+			
+			;prin [ "hot-keys face/active =" mold face/active]
+			;prin [ " face/current =" mold face/current]
+			if not value? 'y [ y: 0 ]	;-- error suppressor
+			if not value? 'x [ x: 0 ]	;-- error suppressor
 			either all [face/active step] [
 				case [
 					; Active mark beyond edge
@@ -2734,13 +4797,15 @@ tbl: [
 						false
 					]
 					; Active mark on edge
+					
 					dim: case [
 						any [
 							all [
 									key = 'down
 									y <> 'done
 									(face/active/y + 1) <= face/total/y
-									(min (face/active/y + 1) face/total/y) > min (face/current/y + face/usable-grid/y - frozen-y-adj) face/total/y
+									;(min (face/active/y + 1) face/total/y) > min (face/current/y + face/usable-grid/y - frozen-y-adj) face/total/y
+									not is-within-view? face 0x1
 							]
 							all [key = 'up face/frozen/y + 1 = face/pos/y y <> 'done]
 							all [
@@ -2749,8 +4814,8 @@ tbl: [
 								y <> 'done
 							]
 						][
-							
-							
+							if key = 'down [ cell-offset: get-cell-offset face face/pos ]
+														
 							df: scroll face 'y step/y
 							switch key [
 								page-up   [if step/y < step/y: df [face/pos/y: face/pos/y - face/grid/y - step/y]]
@@ -2761,7 +4826,6 @@ tbl: [
 							'y
 						]
 						any [
-							;-- all [key = 'right face/frozen/x + face/grid/x = face/pos/x face/current/x < (face/total/x - face/last-page/x) x <> 'done]
 							all [key = 'right (face/pos/x + 1 + face/current/x) > (face/usable-grid/x + face/current/x) x <> 'done]
 							all [key = 'left  face/frozen/x + 1    = face/pos/x x <> 'done]
 							all [key = 'right ofs: get-cell-offset face face/pos + step ofs/2/x >  face/size/x x <> 'done]
@@ -2787,10 +4851,10 @@ tbl: [
 						][
 							if event/shift? [face/extend?: true]
 							either any [face/extra? face/extend?] [
-								either '- = first s: skip tail face/selected -2 [
+								either '- = first s: skip tail face/cells-selected -2 [
 									s/2: s/2 + step
 								][
-									repend face/selected ['- s/1 + step]
+									repend face/cells-selected ['- s/1 + step]
 								]
 								show-marks face
 							][
@@ -2821,48 +4885,202 @@ tbl: [
 					switch key [
 						#"C" [copy-selected face]
 						#"X" [copy-selected/cut face]
-						#"V" [
-								if not to-logic face/options/read-only [
-									paste-selected face
-								]
-							 ]
+						#"V" [paste-selected face]
 						#" " [
 							abs-col: face/pos/x + face/current/x - face/frozen/x
 							select-col face abs-col
 						]
 					]
 				][
-					if not to-logic face/options/read-only [
-						switch key [
-							#"^M" [	;-- enter
-								direction: either find event/flags 'shift [ 'up ] [ 'down ]
-								face/actors/hot-keys/feed face #(none) direction 							
-							]
-							F2 [
-								unless face/tbl-editor [make-editor face]
-								do-actor face none 'change
-								show-editor/edit-mode face face/pos
-							]
-							delete [
-								data-addr: get-data-address face face/pos
-								do-actor face none 'change
-								face/table-data/(data-addr/y)/(data-addr/x): copy ""
-								fill face
-							]				
-							#"^H" [ ;-- Backspace
-								unless face/tbl-editor [make-editor face]
-								do-actor face none 'change
-								show-editor/with face face/pos ""
-							]		
+					switch key [
+						#"^M" [	;-- enter
+							direction: either find event/flags 'shift [ 'up ] [ 'down ]
+							face/actors/hot-keys/feed face #(none) direction 							
 						]
-						if ky: to-valid-key event/key event/flags [ 	
+						F2 [
+							case [
+								(first event/flags) = 'shift [
+									set [ 'data-addr 'draw-addr ] get-data-address/both face face/pos
+									advanced-cell-edit/address face data-addr draw-addr
+									return 'done
+								]
+								(first event/flags) = 'alt [
+									edit-overlay face event 
+									return 'done	
+								]
+								true [
+									unless (face/tbl-editor <> []) [make-editor face]
+									do-actor face none 'change
+									show-editor/edit-mode face face/pos
+								]
+							]
+						]
+						F4 [
+							set [ 'data-addr 'draw-addr ] get-data-address/both face face/pos
+							this-cell: rejoin [ "cell" data-addr ]	;-- 'this-cell used in on-F4 script
+							if data-addr/y > 1 [ ;-- skip the header of the column/ needs to handle multi-headers!!!							
+								either negative? data-addr/x [	;-- This is a Virtual column
+									if face/virtual-cols/(data-addr/x)/type = "vid-repeating" [
+										closest-key: get-at-key-or-less/only face/virtual-cols/(data-addr/x)/code data-addr/y
+										vid-id: to-word first split face/virtual-cols/(data-addr/x)/code/(closest-key)/1 " "
+										if in face/vid-lib/(vid-id) 'on-F4 [
+											if target: find-vid-target face data-addr [
+												unset '-target-vid-object-
+												do bind load face/vid-lib/(vid-id)/on-F4 face/actors
+											]
+										]
+									]							
+								][								;-- This is a Normal data column
+									if vid-ovr: face/vid-overlays/(data-addr/x) [
+										vid-id: to-word vid-ovr/id 
+										if in face/vid-lib/(vid-id) 'on-F4 [
+											if target: find-vid-target face data-addr [
+												unset '-target-vid-object-
+												do bind load face/vid-lib/(vid-id)/on-F4 face/actors
+											]
+										]									
+									]									
+								]
+							]
+							
+						]
+						delete [
+							data-addr: get-data-address face face/pos
 							do-actor face none 'change
-							unless face/tbl-editor [make-editor face]
-							show-editor/with face face/pos ky
+							face/table-data/(data-addr/y)/(data-addr/x): copy ""
+							fill face
+						]				
+						#"^H" [ ;-- Backspace
+							unless (face/tbl-editor <> []) [make-editor face]
+							do-actor face none 'change
+							show-editor/with face face/pos ""
+						]		
+					]
+					if ky: to-valid-key event/key event/flags [ 	
+						do-actor face none 'change
+						unless (face/tbl-editor <> []) [make-editor face]
+						show-editor/with face face/pos ky
+					]
+				]
+			]
+		]
+	
+		find-vid-target: function [ 
+			face [object!]
+			addr [pair!]
+		][
+			fnd: none
+			foreach item face/vid-targets [
+				if item/5 = addr [
+					fnd: copy item
+					break
+				]	
+			]
+			return fnd
+		]
+
+		advanced-cell-edit: function [
+			face
+			/address 
+				data-addr [pair!] 
+				draw-addr [pair!]
+			/code-over 
+			/vid-over 
+		][
+			input-is-string?: #(true)
+			addr: either address [ data-addr ] [face/actors/get-data-address face face/pos]
+			col-num: index? find face/col-index addr/x
+			row-num: index? find face/row-index addr/y
+			req-msg: copy ""
+			cell-data: case [
+				addr/x < 0 [ ;-- Virt Column
+					heading-msg: rejoin [ " with Heading: " mold face/virtual-cols/(addr/x)/data/1 ]
+					case [	;-- sequence sensitive
+						code-over [
+							req-msg: rejoin [ "Editing the Code Overlay for Virtual Column (" addr/x ") at column position " col-num newline ] 
+							face/code-overlays/(addr/x)/code
+						]
+						vid-over [
+							req-msg: rejoin [ "Editing the VID Overlay Code for Virtual Column (" addr/x ") at column position " col-num newline ]
+							load face/virtual-cols/(addr/x)/source/2		
+						]
+						face/virtual-cols/(addr/x)/source/(addr/y) [
+							req-msg: rejoin [ "Editing the Virtual Cell Code at Virtual Column (" addr/x ") at column position "  col-num newline "and row " row-num ] 
+							src-code: load face/virtual-cols/(addr/x)/source/(addr/y)										
+						]
+						true [
+							req-msg: rejoin [ "Editing the Virtual Cell Code at Virtual Column (" addr/x ") at column position" col-num  newline "and row " row-num ] 
+							load ""
+						]
+					]
+				]
+				addr/x > 0 [ ;-- Data Column 
+					heading-msg: rejoin [ " with Heading: " mold face/table-data/1/(addr/x) ]
+					case [
+						code-over [
+							req-msg: rejoin [ "Editing the Code Overlay for Column " col-num ] 
+							face/code-overlays/(addr/x)/code	
+						]
+						true [
+							req-msg: rejoin [ "Editing the data cell at Column " col-num " Row " row-num ] 
+							face/table-data/(addr/y)/(addr/x)	
 						]
 					]
 				]
 			]
+			req-data: any [ cell-data "" ]
+			if not string? req-data [
+				req-data: mold/only req-data ;-- remove brackets 
+				input-is-string?: #(false)
+			]
+			req-addr: addr 
+			either face/frozen-rows <> [][
+				header-msg: either addr/x < 0 [
+					rejoin [ " with Heading: " mold face/virtual-cols/(addr/x)/data/1]
+				][
+					rejoin [ " with Heading: " mold face/table-data/(addr/y)/1]
+				]
+			][
+				header-msg: ""
+			]
+			col-num: to-string index? find face/col-index addr/x 
+			process-results: [ ;-- explicit 'req-results variable is used in this context
+				case [
+					code-over [
+						face/code-overlays/(req-addr/x)/code: copy req-results
+					]
+					all [ vid-over (req-addr/x < 0)][
+						cx: either input-is-string? [ mold req-results ][ req-results ]
+						face/virtual-cols/(req-addr/x)/source/2: copy cx
+						expand-virtual face cx req-addr
+						cx: face/virtual-cols/(req-addr/x)/code/2: bind load/all cx face/actors
+						face/virtual-cols/(req-addr/x)/data/2: do cx
+					]						
+					vid-over [
+						face/vid-overlays/(addr/x)/code/1: copy req-results
+					]
+					req-addr/x < 0 [
+						req-results: copy req-results
+						cx: either input-is-string? [ mold req-results ][ req-results ]
+						face/virtual-cols/(req-addr/x)/source/(req-addr/y): copy cx
+						expand-virtual face cx req-addr
+						cx: face/virtual-cols/(req-addr/x)/code/(req-addr/y): bind load/all cx face/actors
+						face/virtual-cols/(req-addr/x)/data/(req-addr/y): do cx
+					]
+					true [ ;-- Normal data cell 
+						inject-update face data-addr draw-addr req-results 											
+					]
+				]
+				fill face				
+			]
+			if req-results: request-multiline-text/preload/size/submit/modal rejoin [ req-msg  heading-msg ] req-data 800x200
+				[ 	;-- --------------------------- F5 Submit block---------------------------------------
+					req-results: get-results
+					do process-results
+				]
+				[	;-- ---------------------------- OK Button block-----------------------------
+					do process-results 
+				]
 		]
 
 		do-menu: function [face [object!] event [event! none!]][
@@ -2872,16 +5090,18 @@ tbl: [
 				save-table      [save-table face]
 				save-table-as   [save-table-as face]
 				save-state      [save-state face]
+				set-column-names  [set-column-names face]
 				use-state       [use-state face]
 				unhide-all      [unhide-all  face]
 				;force-state     [use-state/force face]
 				clear-color     [clear face/colors fill face]
 				forget-names    [forget-names face none]
-
+				show-table-details  [ table-details face ]
 				open-big        [open-big-table face]
 
 				; CELL
 				edit-cell       [on-dbl-click face event]
+				edit-cell-multi-line [ multi-line-editor face event ]
 				freeze-cell     [freeze face event 'y freeze face event 'x]
 				unfreeze-cell   [unfreeze face 'y unfreeze face 'x]
 
@@ -2924,6 +5144,10 @@ tbl: [
 				sort-loaded-down [on-sort/loaded/down face event]
 				unsort           [unsort face]
 
+				; VIRTUAL-COLUMN
+				set-virt-col-code [ set-virtual-col face event 'code ]
+				set-virt-col-vid  [ set-virtual-col face event 'VID ]
+
 				filter [
 					if code: ask-code [
 						code: load code
@@ -2939,7 +5163,10 @@ tbl: [
 				append-col  [append-col face]
 				insert-virtual-col [insert-virtual-col face event]
 				append-virtual-col [append-virtual-col face]
-
+				
+				insert-pre-built-col [ place-pre-buit-col face event ]
+				append-pre-built-col [ place-pre-buit-col/append face event ]
+				
 				find-in-col     [find-in-col face event]
 
 				move-col-first  [move-col face event 'first]
@@ -2962,7 +5189,25 @@ tbl: [
 				date! time! logic!
 				image! tuple!   [set-col-type face event]
 
-				set-default     [set-default face event]
+				set-default     			[set-default face event]
+				remove-default				[set-default/delete face event]
+				set-default-auto-incr     	[set-default/auto-incr face event]
+				
+				edit-overlay 	 [ edit-overlay face event     ]
+				remove-overlay	 [ remove-overlay face event   ]
+				set-overlay-vid  [ set-overlay-type face event ]
+				set-overlay-code [ set-overlay-type face event ] 
+				
+				set-align-left	 [ set-col-align face event 'left   ]
+				set-align-center [ set-col-align face event 'center ]
+				set-align-right  [ set-col-align face event 'right  ]
+				
+				
+				set-col-read-only  [ set-access/col/read-only face event ]
+				set-col-read-write [ set-access/col face event ]
+				set-row-read-only  [ set-access/row/read-only face event ]
+				set-row-read-write [ set-access/row face event ]
+
 
 				; SELECTION
 				copy-selected   [copy-selected face]
@@ -2980,7 +5225,9 @@ tbl: [
 			]
 		]
 
-		do-over: function [
+
+
+		do-over: func [
 			face [object!]
 			event [event! none!]
 		][
@@ -2994,7 +5241,7 @@ tbl: [
 					]
 					event/ctrl? []
 					true [
-						selection: find/last face/selected pair!
+						selection: find/last face/cells-selected pair!
 						face/same-offset?: no
 						case [
 							step: scroll-on-border face event selection 'y [
@@ -3014,15 +5261,56 @@ tbl: [
 					]
 				]
 			]
+			if not event/away? [
+				;-- --------------------------------------------
+				;-- target index  description
+				;--        -----  -----------
+				;--          1		offset
+				;--          2		size
+				;--          3		not-rendered? 	
+				;--          4		renderer name
+				;-- 		 5      data address
+				;--          6      draw address   
+				;-- --------------------------------------------
+				
+				targets-len: length? face/vid-targets
+				repeat i targets-len [
+					target: face/vid-targets/:i 
+					either all [
+						target/3  			
+						within?  event/offset target/1 target/2 
+					][
+						data-addr: target/5
+						draw-addr: target/6
+						row-num: target/5/y
+						col-num: target/5/x
+						
+						-vid-code-: either find face/freeform-vid target/4 [
+							face/virtual-cols/(data-addr/x)/code/2/1
+						][
+							"" 
+						]
+						unset '-target-vid-object-
+						set-vid-context face col-num row-num
+						do bind load/all mold/only face/vid-renderer/(target/4)/restore face
+						table-obj/pane: layout/only new-lay: compose/deep bind load/all mold/only face/vid-renderer/(target/4)/render 'addr
+						face/vid-targets/:i/3: #(false)
+						break
+					][
+						face/vid-targets/:i/3: #(true)
+					]
+				]
+				
+			]		
 			face/no-over: false
 		]
 
 		find-in-row: function [face [object!] event [event!]][
 			code: ask-code
-			clear face/selected
+			clear face/cells-selected
 			r: get-row-number face event
 			foreach c face/col-index [
-				if (form face/table-data/:r/:c) ~ code [append face/selected as-pair c r]
+				if (form face/table-data/:r/:c) ~ code [append face/cells-selected as-pair c r]
 			]
 			show-marks face
 		]
@@ -3040,13 +5328,13 @@ tbl: [
 				face/row-index: skip head face/row-index face/top/y
 				filter-rows face col code
 				face/row-index: head face/row-index
-				clear face/selected
+				clear face/cells-selected
 				index-col: index? find face/col-index col
 				foreach r face/filtered/y [
 					index-row: index? find face/row-index r
-					append face/selected as-pair index-col index-row
+					append face/cells-selected as-pair index-col index-row
 				]
-				if not empty? face/selected [
+				if not empty? face/cells-selected [
 					first-found: index? find face/row-index face/filtered/y/1
 					scroll face 'y first-found - face/current/y - 1
 					face/marks/-1: 0.220.0.220
@@ -3057,14 +5345,29 @@ tbl: [
 
 		; OPEN
 
-		open-red-table: func [face [object!] fdata [block!] /only /local opts i col type sz][
+		open-red-type-table: func [
+			{Opens .red table file by default}
+			face [object!] 
+			fdata [block!] 
+			/only 
+			/redtbl {Opens .redtbl file}
+			/local opts i col type sz
+		][
 			face/starting?: yes
-			either only [
-				opts: fdata
-			][
-				opts: fdata/2
-				face/table-data: remove/part fdata 2
+			clear-table-state face 
+			
+			either redtbl [
+				opts: fdata/options
+				data: face/table-data: fdata/table-data				
+			][			
+				either only [
+					opts: fdata
+				][
+					opts: fdata/2
+					face/table-data: remove/part fdata 2	;-- system/words/data: has already been set to table-data
+				]
 			]
+			recast-none opts
 			face/sheet?: to-logic find [true on yes] opts/sheet
 			either face/sheet? [
 				put face/options 'sheet yes
@@ -3076,11 +5379,16 @@ tbl: [
 				put face/options 'auto-col face/auto-col?
 				put face/options 'auto-row face/auto-row?
 			]
+			table-obj: face 
 			init-grid face
 			init-indices/only face
 
 			if opts/frozen-cols [append clear face/frozen-cols opts/frozen-cols ]
 			if opts/frozen-rows [append clear face/frozen-rows opts/frozen-rows ]
+			if opts/read-only-rows [append clear face/read-only-rows opts/read-only-rows ]
+			if opts/read-only-cols [append clear face/read-only-cols opts/read-only-cols ]
+			if opts/auto-incr [append clear face/auto-incr opts/auto-incr ]
+			if opts/col-names [append clear face/col-names opts/col-names ]
 			face/frozen: as-pair length? face/frozen-cols length? face/frozen-rows
 			append clear face/col-index either opts/col-index [opts/col-index][face/default-col-index]
 			append clear face/row-index either opts/row-index [opts/row-index][face/default-row-index]
@@ -3101,7 +5409,6 @@ tbl: [
 			][
 				face/col-type: clear face/col-type
 			]
-			if opts/defaults [face/defaults: to-map opts/defaults]
 
 			face/box: any [opts/box face/default-box]
 			face/top: case/all [
@@ -3110,14 +5417,20 @@ tbl: [
 				true [as-pair x y]
 			]
 			face/current:  any [opts/current  face/top]
-			face/selected: any [opts/selected [1x1]]
+			face/cells-selected: any [opts/selected [1x1]]
 			face/anchor:   any [opts/anchor   1x1]
 			face/active:   any [opts/active   1x1]
 
 			face/pos: face/active - face/current + face/frozen
 
-			either opts/names [face/names: to-map opts/names][clear face/names]
-
+			either opts/names [
+				face/names: to-map opts/names
+				foreach name keys-of face/names [
+					name-selected/reload face name
+				]
+			][
+				clear face/names
+			]
 			face/scroller/x/position: face/current/x + 1
 			face/scroller/y/position: face/current/y + 1
 			set-freeze-point2 face
@@ -3125,7 +5438,26 @@ tbl: [
 			set-last-page face
 
 			face/draw: copy []
-			face/marks: insert tail face/draw [line-width 2.5 fill-pen 0.0.0.220]
+			face/marks: insert tail face/draw [pen 0.0.255 line-width 2.5 fill-pen 0.0.0.220]
+			either redtbl [
+				face/virtual-cols: fdata/virtual-cols
+				face/vid-state: fdata/vid-state 			
+				face/vid-overlays: fdata/vid-overlays 
+				face/code-overlays: fdata/code-overlays 
+				if fdata/defaults [ face/defaults: fdata/defaults ]
+				if fdata/col-align [ face/col-align: fdata/col-align ]				
+			][
+				if exists? redbin-filename: to-file rejoin [ head (remove/part (skip tail copy face/data -4) 4) ".redbin" ]	[
+					redbin-data: load/as redbin-filename 'redbin
+					face/virtual-cols: 	redbin-data/virtual-cols
+					face/vid-state: 	redbin-data/vid-state 			
+					face/vid-overlays: 	redbin-data/vid-overlays 
+					face/code-overlays: redbin-data/code-overlays 
+					if redbin-data/defaults [ face/defaults: redbin-data/defaults ]
+					if redbin-data/col-align [ face/col-align: redbin-data/col-align ]
+					if redbin-data/col-names [ face/col-align: redbin-data/col-names ]
+				]
+			]
 			fill face
 			show-marks face
 			no-over: true
@@ -3134,20 +5466,32 @@ tbl: [
 		open-table: func [
 			face [object!]
 			/with state [file! block!] ;TBD
-			/local file opts
+			/local file opts bin-data
 		][
-			if file: request-file/title/file "Open file" system/options/path [
+			if file: request-file/title/file/filter 
+				"Open file" rejoin [ system/options/path %data/ ] ["Red Table" "*.redtbl" "Red File" "*.red" "CSV" "*.csv" "All Files" "*.*"][
 				face/data: file
 				data: load file
-				either all [
-					%.red = suffix? file
-					data/1 = 'Red
-					block? opts: data/2
-					;opts/current
-				][
-					open-red-table face data
-				][
-					init face
+				if value? '-target-vid-object- [ -target-vid-object-/visible?: false ]
+				case [
+					all [
+						%.red = suffix? file
+						data/1 = 'Red
+						block? opts: data/2
+					][	
+						;-- open-red-table face data
+						open-red-type-table face data 
+					]
+					%.redtbl = suffix? file [
+						bin-data: load/as file 'redbin 
+						;open-redtbl face bin-data 
+						open-red-type-table/redtbl face bin-data 
+					]						
+					true [ 
+						clear-table-state face 
+						set-data face face/data
+						init face 
+					]				
 				]
 			]
 			face/no-over: true
@@ -3155,13 +5499,13 @@ tbl: [
 		]
 
 		open-big-table: function [face [object!] /with file][
-			if any [file file: request-file/title/file "Open large file" system/options/path ] [
+			if any [file file: request-file/title/file/filter "Open large file" system/options/path ["Red Table" "*.redtbl" "Red File" "*.red" "CSV" "*.csv" "All Files" "*.*"] ] [
 				face/big-size: length? read/binary file
 				face/big-length: length? csv: head clear find/last read/binary/part file 1000'000 lf
 				face/data: file
 
 				face/table-data: load-csv to-string csv
-				open-red-table/only face [face/frozen-rows: [1]]
+				open-red-type-table/only face [face/frozen-rows: [1]]
 			]
 		]
 
@@ -3169,29 +5513,41 @@ tbl: [
 			file: face/data
 			face/big-last: face/big-last + face/big-length + 1
 			append face/prev-lengths face/big-length
-			state: save-state/only/with face [col-sizes col-types face/frozen-cols] ;col-index ? why error?
+			state: save-state/only/with face [col-sizes col-types frozen-cols] ;col-index ? why error?
 			if attempt [found: find/last read/binary/seek/part file face/big-last 1000'000 lf] [
 				face/big-length: length? csv: head clear found
 				csv: to-string csv
 				either error? loaded: load-csv csv [loaded halt][
 					face/table-data: loaded
 				]
-				open-red-table/only face state
+				open-red-type-table/only face state
 			]
 		]
 
 		prev-chunk: function [face [object!]][
 			file: face/data
-			state: save-state/only/with face [col-sizes col-types face/frozen-cols]
+			state: save-state/only/with face [col-sizes col-types frozen-cols]
 			if not empty? face/prev-lengths [
 				face/big-length: take/last face/prev-lengths
 				face/big-last: face/big-last - face/big-length - 1
 				csv: read/binary/seek/part file face/big-last face/big-length
 				csv: to-string csv
 				either error? loaded: load-csv csv [loaded halt][face/data: loaded]
-				open-red-table/only face state
+				open-red-type-table/only face state
 			]
 		]
+		
+		recast-none: function [
+			{Sets all items with word 'none to real #(none)} 
+			series [block!]
+		][
+			s-len: length? series
+			repeat item s-len [
+				if series/:item = 'none [
+					series/:item: #(none)
+				]
+			]
+		]		
 
 		use-state: function [
 			face [object!]
@@ -3205,12 +5561,13 @@ tbl: [
 				either file [
 					state: load filename
 				][
-					if file: request-file/title/file "Select state to use ..." system/options/path [
+					if file: request-file/title/file/filter "Select state to use ..." system/options/path 
+						[ "All Files" "*.*" "Red Table" "*.redtbl" "Red File" "*.red" "CSV" "*.csv" ] [
 						state: load file
 					]
 				]
 			]
-			if state [open-red-table/only face state]
+			if state [open-red-type-table/only face state]
 		]
 
 		; SAVE
@@ -3229,13 +5586,17 @@ tbl: [
 				auto-col:    (face/options/auto-col)
 				auto-row:    (face/options/auto-row)
 				col-type:    (body-of face/col-type)
-				selected:    (face/selected)
-				anchor:      (face/anchor)
-				active:      (face/active)
-				names:       (body-of face/names)
-				defaults:    (body-of face/defaults)
-				scroller-x:  (face/scroller/x/position)
-				scroller-y:  (face/scroller/y/position)
+				cells-selected: (face/cells-selected)
+				anchor:      	(face/anchor)
+				active:      	(face/active)
+				names:       	(body-of face/names)
+				;defaults:    	(body-of face/defaults)
+				scroller-x:  	(face/scroller/x/position)
+				scroller-y:  	(face/scroller/y/position)
+				read-only-rows: (face/read-only-rows)
+				read-only-cols: (face/read-only-cols)
+				auto-incr:      (face/auto-incr)
+				col-names:    (face/col-names)
 			]
 		]
 
@@ -3254,25 +5615,61 @@ tbl: [
 			]
 
 			either only [state][
-				if file: request-file/save/title/file "Save state as ..." system/options/path [
+				if file: request-file/save/title/file/filter "Save state as ..." system/options/path 
+					[ "All Files" "*.*" "Red Table" "*.redtbl" "Red File" "*.red" "CSV" "*.csv" ][
 					save file state
 				]
 			]
 		]
 
 		save-red-table: function [face [object!]][
-			;-- out: new-line/all data true
 			out: new-line/all face/table-data true
 			opts: get-table-state face
 			save/header face/data out opts
+			
+			redbin-filename: to-file rejoin [ head (remove/part (skip tail copy face/data -4) 4) ".redbin" ]
+			save/as redbin-filename
+				rdx: reduce [ 
+					to-set-word 'virtual-cols 	to map! to block! face/virtual-cols 
+					to-set-word 'vid-state  	to map! to block! face/vid-state 
+					to-set-word 'vid-overlays  	to map! to block! face/vid-overlays
+					to-set-word 'code-overlays  to map! to block! face/code-overlays
+					to-set-word 'defaults       to map! to block! face/defaults
+					to-set-word 'col-align      to map! to block! face/col-align
+					to-set-word 'col-names    		to block! face/col-names
 		]
+				'redbin
+		]
+		
+		save-redtbl: function [face [object!]][ 
+			out: new-line/all face/table-data true
+			opts: get-table-state face
+			
+			redbin-filename: to-file rejoin [ head (remove/part (skip tail copy face/data -7 ) 7) ".redtbl" ]
+			save/as redbin-filename
+				rdx: reduce [
+					to-set-word 'options				to block! opts
+					to-set-word 'table-data			    to block! out  
+					to-set-word 'virtual-cols 	to map! to block! face/virtual-cols 
+					to-set-word 'vid-state  	to map! to block! face/vid-state 
+					to-set-word 'vid-overlays  	to map! to block! face/vid-overlays
+					to-set-word 'code-overlays  to map! to block! face/code-overlays
+					to-set-word 'defaults       to map! to block! face/defaults
+					to-set-word 'col-align      to map! to block! face/col-align
+				]
+				'redbin
+		]
+		
 
 		save-table: function [face [object!]][
 			either file? file: face/data [
 				switch/default suffix? file [
-					%.red [save-red-table face]
-					%.csv [write file to-csv face/table-data]
-				][write file face/table-data]
+					%.red 		[save-red-table face]
+					%.redtbl 	[save-redtbl face]
+					%.csv 		[write file to-csv face/table-data]
+				][
+					write file face/table-data
+				]
 			][
 				file: save-table-as face
 			]
@@ -3281,14 +5678,13 @@ tbl: [
 		]
 
 		save-table-as: func [face [object!] /local file][
-			if file: request-file/save/title/file "Save file as" system/options/path [
+			if file: request-file/save/title/file/filter "Save file as" system/options/path 
+				["Red Table" "*.redtbl" "Red File" "*.red" "CSV" "*.csv" "All Files" "*.*"] [
 				face/data: file
 				save-table face
 			]
 			file
 		]
-
-		; STANDARD
 
 		on-scroll: function [face [object!] event [event! none!]][
 			if 'end <> key: event/key [
@@ -3311,7 +5707,7 @@ tbl: [
 			face/on-border?: on-border face to-pair event/offset
 			if not face/on-border? [
 				hide-editor face
-				face/pos: get-draw-address face event
+				face/pos: either pair? event [event][get-draw-address face event]
 				face/same-offset?: yes
 				case [
 					event/shift? [mark-active/extend face face/pos]
@@ -3321,18 +5717,24 @@ tbl: [
 					]
 				]
 			]
-			do-actor face none 'click 
+			do-actor face none 'click
 		]
 		
-		on-click: function [face [object!] event [event! none!]][]
-		on-change: function [face [object!] event [event! none!]][]
-
+		on-click: func [face [object!] event [event! none!]] []
+		on-change: func [face [object!] event [event! none!]] []
+		
 		on-unfocus: func [face [object!]][
-			hide-editor face
-			unmark-active face
+			if all [									;accomodate vid cells.
+				face/tbl-editor
+				face/tbl-editor/visible?
+			][			
+				hide-editor face
+				unmark-active face
+			]
 		]
 
 		on-over: func [face [object!] event [event! none!]][
+			table-obj: face
 			do-over face event
 		]
 
@@ -3369,56 +5771,108 @@ tbl: [
 			use-editor/edit-mode face event
 		]
 
-		on-key-down: func [face [object!] event [event! none!]][hot-keys face event]
+		on-key-down: func [face [object!] event [event! none!]][
+			hot-keys face event	
+		]
 		
 		on-create: func [face [object!] event [event! none!]] [
 			face/frozen-nums/x: face/frozen-cols	;-- need to properly initialize these when table is used as a style
 			face/frozen-nums/y: face/frozen-rows					
 		]
 		
-		on-created: func [face [object!] event [event! none!] /local file config ][
-			make-scroller face
-			either all [
-				file? file: face/data
-				%.red = suffix? file
-				data: load file
-				data/1 = 'Red
-				block? config: data/2
-				;opts/current
-			][
-				open-red-table face data config
-			][
-				set-data face face/data
-				either config: face/options/config [
-					if file? config [config: load config]
-					open-red-table/only face config
+		on-created: func [
+		    face  [object!]
+		    event [event! none!]
+		    /local file data config bin-data
+		][
+		    make-scroller face
+		    case [
+		        ; Handle .red files
+				all [
+					file? file: face/data
+					%.red = suffix? file
+					data: load file		;-- this is system/words/data GLOBAL
+					data/1 = 'Red
+					block? config: data/2
 				][
-					if face/options/sheet [
-						face/sheet?: yes
-						put face/options 'auto-col face/auto-col?: yes
-						put face/options 'auto-row face/auto-row?: yes
-					]
-					init face
-				]
-			]
+					open-red-type-table face data 
+				]		        
+
+		        ; Handle .redtbl files
+		        all [
+					file? file: face/data
+					%.redtbl = suffix? file 		        	
+		        ][
+		            bin-data: load/as file 'redbin
+		            open-red-type-table/redtbl face bin-data
+		        ]
+
+		        ; Default handling for raw data or config options
+		        true [
+		            if face/data = %./ [ 
+		            	status-msg "An invalid data file has been specified. Please select another file."
+		            	exit 
+		            ]
+		            set-data face face/data
+		            either config: face/options/config [
+		                if file? config [config: load config]
+		                open-red-type-table/only face config
+		            ][
+		                if face/options/sheet [
+		                    face/sheet?: yes
+		                    put face/options 'auto-col face/auto-col?: yes
+		                    put face/options 'auto-row face/auto-row?: yes
+		                ]
+		                init face
+		            ]
+		        ]
+		    ]
+
 			if all [
 				not file? face/data
 				to-logic face/options/auto-save
 			][
+				status-msg [ "Can not use 'auto-save' when the data for the table is a Red block." newline "auto-save only works when the data is a file." ]
 			]
+		]		
+		
+		on-menu: function [face [object!] event [event! none!]][do-menu face event]
+		
+		update-vid-cell: function [ 
+			face [object!] 
+			val 
+			data-addr [pair!]
+			draw-addr [pair!]
+		][
+			
+			either data-addr/x < 0 [ 
+				vid-name: to-lit-word rejoin [ "cell" data-addr]
+				face/vid-state/:vid-name: val	
+			][
+				face/table-data/(data-addr/y)/(data-addr/x): val
+				inject-update face data-addr draw-addr val 
+			]			
+			face/actors/fill face
+		]
+		
+		multi-line-editor: function [
+			face [object!]
+			event [event!]
+		][
+			set [ 'data-addr 'draw-addr ] get-data-address/both face face/pos
+			advanced-cell-edit/address face data-addr draw-addr
 		]
 
-		on-menu: function [face [object!] event [event! none!]][do-menu face event]
-	]
+	] ;-- end of table actors
 ]
 
-on-table-tab-handler: func [
+table-event-handler: func [
     face [object!]
     event [event!]
 ][
 	if all [
-		(event/key = #"^-")
-		(event/type = 'key-down)
+		event/key = #"^-"
+		event/type = 'key-down
 		any [
 			(select face 'identifier ) = "table-template"
 			find face/extra 'on-table-tab
@@ -3429,29 +5883,30 @@ on-table-tab-handler: func [
 			face/visible?: no
 			face/extra/table/actors/update-data face face/extra/table
 			set-focus face/extra/table			
-			face/extra/table/change-state: 'after
-			do-actor face/extra/table none 'change
-			face/extra/table/change-state: 'before
-
 			face/extra/table/actors/hot-keys/feed face/extra/table none direction
 		][
 			face/actors/hot-keys/feed face none direction 
 		]	
 		return 'done		
 	]
+	if all [ 
+		event/type = 'wheel
+		dis: select face/extra 'disable-wheel 
+		dis = 'true
+	][
+		return 'stop
+	]
+	if all [
+		event/key = #"^-"
+		event/type = 'key-down
+		find face/extra 'tab-key-to-key-down
+	][
+		do-actor face event 'key-down
+	]	
 	
 ]
-insert-event-func 'on-table-tab-handler :on-table-tab-handler 
 
-between?: func [ val apair ] [
-	return either all [ (val >= apair/x) (val <= apair/y) ] [
-		true
-	][
-		false
-	]
-]
-
-
+insert-event-func 'table-event-handler :table-event-handler
         
 style/init 'table tbl [
 	face: self

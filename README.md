@@ -1,10 +1,24 @@
 # Customized Version of table-template 
 This repository is a fork of table-template work done by Toomasv. The original project can be found at (https://github.com/toomasv/table-template). 
 
-The modifications allow the template to work with Red Verion 0.6.6 and onward.  
+This fork allows the template to work with Red Verion 0.6.6 and onward. 
 
+**Jan-2026 Changes**
 
-**Changes include:** 
+- See: [table-template-changes.adoc](docs/table-template-changes.adoc) for the change log.                 
+- See: [table-template-documentation.adoc](docs/table-template-documentation.adoc) for full documentation. 
+- See: [table-template Demo Video Jan-2026](https://youtu.be/ucT35AclXAk) 
+
+This version represents a significant evolution of the table template system, adding extensive support for: 
+* Virtual columns with custom rendering 
+* Overlay system for VID and Code
+* Enhanced ".red" file format. Now saves companion .redbin file with extended metadata
+* New ".redtbl" file format. Saves everything in one file.
+* Pre-built column types 
+* Enhanced file format support 
+* Better state management 
+
+**May-2025 Changes** 
 - Update map and construction syntax in program and in the documentation below
 - Move all template fields from the actors block into the template block
 - Move the actors/data field to the newly created 'table-data field

@@ -1,0 +1,1 @@
+probe table1/actors/get-checked-rows table1 "rows-selected"
