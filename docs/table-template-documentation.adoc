@@ -1,7 +1,8 @@
+:experimental:
 = Table Template User Documentation
 :author: @toomasv, @mikeyaunish
 :version: 0.106
-:revdate: 7-Jan-2026
+:revdate: 13-Jan-2026
 :toc: left
 :toclevels: 3
 :sectnums:
@@ -10,7 +11,7 @@
 
 == Introduction
 
-The Table Template is a comprehensive Red language table widget system that provides spreadsheet-like functionality with advanced features including cell editing, column overlays, virtual columns, sorting, filtering, freezing rows/columns, and much more.
+The Table Template is a comprehensive Red language VID style that provides spreadsheet-like functionality with advanced features including cell editing, column overlays, virtual columns, sorting, filtering, freezing rows/columns, and much more.
 
 === Overview
 
@@ -29,9 +30,7 @@ The `table-template.red` file provides a complete table widget implementation fo
 * Context menus
 
 === Version Information
-
-* **Version:** 0.106
-* **Date:** 7-Jan-2026
+* **Date:** 13-Jan-2026
 * **Repository:** https://github.com/mikeyaunish/table-template[GitHub]
 
 === Dependencies
@@ -133,10 +132,6 @@ view [
 
 When `auto-save` is enabled, changes to the table are automatically saved to the source file. This is useful for maintaining data persistence, but note that this can slow down table operations, especially with large files.
 
-== Auto-Headers
-
-The table supports automatically indexed columns and/or rows.
-
 === Auto-Indexed Columns
 
 It is possible to add an automatically indexed column to your table by specifying the corresponding option. When `auto-col` is set to `true`, an extra column will be created, automatically enumerated. By this, the original order of rows can be restored whenever necessary:
@@ -213,42 +208,71 @@ view [
 ]
 ----
 
-== Core Concepts
-
-=== Data Structure
-
-The table data is stored in `face/table-data` as a block of blocks, where each inner block represents a row.
+=== Basic Table
 
 [source,red]
 ----
-table-data: [
-    ["Header1" "Header2" "Header3"]  ; Row 1 (often frozen as header)
-    ["Data1" "Data2" "Data3"]         ; Row 2
-    ["Data4" "Data5" "Data6"]         ; Row 3
+view [
+    title "Basic Table"
+    table data [
+        ["Name" "Age" "City"]
+        ["John" 25 "New York"]
+        ["Jane" 30 "London"]
+        ["Bob" 35 "Paris"]
+    ]
 ]
 ----
 
-=== Coordinate Systems
+=== Table with Frozen Header
 
-The table uses multiple coordinate systems:
+[source,red]
+----
+view [
+    title "Table with Frozen Header"
+    table data [
+        ["Name" "Age" "City"]
+        ["John" 25 "New York"]
+        ["Jane" 30 "London"]
+    ] options [
+        config: [
+            frozen-rows: [1]
+        ]
+    ]
+]
+----
 
-* **Data coordinates:** The actual row/column indices in `table-data`
-* **Draw coordinates:** The visual position on screen
-* **Index coordinates:** The position in the index arrays
+=== Table with dropdown-list overlay
 
-Functions are provided to convert between these systems:
+[source,red]
+----
+view [
+    title "Table with Dropdown"
+    table data [
+        ["Name" "Status"]
+        ["John" "Active"]
+        ["Jane" "Inactive"]
+    ] options [
+        config: [
+            frozen-rows: [1]
+        ]
+    ]
+]
+----
+1. After creation Right-click on column 2
+2. Select Menu item: `Column > Overlay > Apply repeating VID` 
+3. Select `data-drop-list`
 
-* `get-data-address` - Get data coordinates from event
-* `get-draw-address` - Get draw coordinates from event
-* `get-logic-address` - Convert draw to data coordinates
 
-=== Frozen Rows and Columns
 
-Frozen rows and columns remain visible when scrolling. They are typically used for headers.
+=== Loading from File
 
-* Frozen rows are stored in `face/frozen-rows`
-* Frozen columns are stored in `face/frozen-cols`
-* The number of frozen rows/columns is in `face/frozen`
+[source,red]
+----
+view [
+    title "Table from File"
+    table data %mydata.red
+]
+----
 
 == Menu System
 
@@ -324,6 +348,10 @@ The table provides a comprehensive context menu system accessible via right-clic
 * **Edit Overlay (Alt+F2)** - Edit the column overlay
 * **Remove Overlay** - Remove the column overlay
 
+==== Set Column Names
+
+Sets static names for columns (requires table to be loaded from a file, not just created from a block). These names are used to identify the columns in the table and are not affected by sorting, filtering or what headings are defined in the table data. These names are used by the `get-cell` function to get the definitve value of a cell. This allows the table to be used like a database with named columns.
+
 ==== Sort
 
 * **Loaded**
@@ -335,7 +363,6 @@ The table provides a comprehensive context menu system accessible via right-clic
 
 ==== Other
 
-* **Set Column Names** - Set names for columns
 * **Filter ...** - Apply filter to column
 * **Unfilter** - Remove filter
 * **Freeze** - Freeze the column
@@ -405,36 +432,58 @@ Special types:
 [#_setting_column_type]
 === Setting Column Type
 
-To set a column type, right-click on the column header and select:
+To set a column to a specific data type, right-click on the column header and select:
 
 `Column > Type > [desired type]`
 
 When a column type is set, all data in that column is converted to the specified type. Any cells containing a data type that doesn't match are cleared out. If a row is frozen, it will remain unmodified.
 
+== Column Types
+
+1. **Normal Data Columns** - Standard columns that store data in `table-data`
+2. **Virtual Columns** - Columns not part of the main table data, saved separate from the main table data. Virtual columns display with a red hue for easy identification.
+
+
 == Column Overlays
 
-Column overlays allow you to apply custom rendering or behavior to entire columns.
+Column overlays allow you to apply custom rendering or behavior to entire columns. Columns that have overlays are identified by a yellow line at the top of the column. This is to allow the user to easily identify columns that have overlays.
+
+=== Overlay Types
+
+1. **VID Repeating** - VID objects display in the cell space. All usable VID styles for data columns begin with `data-` prefix
+2. **Code Repeating** - Red code is run at each cell in the column. The code overlay names begin with `cell-` prefix.
+
 
 === VID Overlays
 
-VID overlays are used to apply VID Objects to each cell in a column. Cells with VID overlays are identified by green bars on the sides, indicating they behave differently than regular table data cells.
+VID overlays are used to apply VID Objects to each cell in a column. Cells with VID overlays are identified by green bars on the sides, indicating they behave differently than regular table data cells. This is important because VID objects can and often do have their own menus and actions that are not part of the regular table menu. So this may cause confusion if the user is not aware of this. Each VID object can be seen as it's own separate sub-system within the table.
 
-VID overlays use the current cell data to create the VID object. All usable VID styles for data overlays begin with the `data-` prefix, while virtual column VID styles begin with the `cell-` prefix.
+VID overlays use the current cell data to create the VID object. All usable VID styles for data columns begin with the `data-` prefix, while virtual column VID styles begin with the `cell-` prefix.
 
 Pre-built VID overlays include:
 
-* `data-drop-list` - Dropdown list populated from column data. This overlay is designed to be a read-only column, so that data isn't changed inconsistently with the drop-list.
-* `data-checkbox-for-logic` - Checkbox for logic values (true/false). Sorting is enabled when this overlay is used, using a custom sorting function where true = 1, false = 0, invalid = -1.
-* `cell-checkbox-for-row-selection` - Checkbox for row selection (used in virtual columns)
-* `cell-button` - Button in each cell (behaves just like a regular VID button object)
+* `data-drop-list` - Dropdown list populated from column data. This overlay is designed to be a read-only column, so that data isn't changed inconsistently with the drop-list. This overlay is only used on data columns, not virtual columns. For more information see <<_data_drop_list>>.
+* `data-checkbox-for-logic` - Checkbox for logic values (true/false). Sorting of this column is enabled when this overlay is used, using The sorting pattern:
+
+    - true = 1
+    - false = 0
+    - invalid = -1
+
+This overlay is only used on data columns, not virtual columns. For more information see <<_data_checkbox_for_logic>>.
+
+* `cell-checkbox-for-row-selection` - Checkbox for row selection (used on virtual columns) Allows selection of multiplerows in a table and some sort of user defined action can be taken on those selected rows. 
+This overlay is only used on virtual columns, not data columns. For more information see <<_cell_checkbox_for_row_selection>>.
+
+* `cell-button` - Button in each cell (behaves just like a regular VID button object). This overlay is only used on virtual columns, not data columns.
+For more information see <<_cell_button>>.
 
 === Code Overlays
 
 Code overlays execute Red code for each cell. Pre-built code overlays include:
 
-* `cell-New-Code-Overlay` - Template for new code overlay
-* `cell-code-example` - Example code overlay
-* `cells-to-red-yellow-green` - Color coding based on values
+* `cell-New-Code-Overlay` - Template for new code overlay. This is a good starting point for your own code overlays. This overlay is usable on both virtual columns and data columns. See <<cell-New-Code-Overlay>> for more information.
+* `cell-code-example` - Example code overlay. This overlay is usable on both virtual columns and data columns. See <<_cell_code_example>> for more information.
+* `cells-to-red-yellow-green` - Color coding based on values. This overlay is usable on both virtual columns and data columns. See <<_cells_to_red_yellow_green>> for more information.
 
 === Applying Overlays
 
@@ -473,70 +522,138 @@ Virtual columns can be created via:
 * `Column > Actions > Insert Virtual Column`
 * `Column > Actions > Append Virtual Column`
 
-=== Virtual Column Structure
-
-Virtual columns have the following structure:
-
-[source,red]
-----
-virtual-cols/:col-num: make object! [
-    id: "unique-id"
-    type: 'code
-    source: make map! []  ; Source data per row
-    code: make map! []    ; Code per row
-    data: make map! []    ; Computed data per row
-    default: none        ; Default code
-]
-----
 
 === Virtual Column Types
 
-Virtual columns display with a red hue for identification. There are two types:
+Virtual columns display with a red hue for identification. There are thre types:
 
-==== Type 1: Code Virtual Columns
+==== Type 1: Plain Virtual Columns
 
-Code virtual columns allow calculations within the cell using the `R<row-num>C<col-num>` cell referencing system. Cell contents are run as code with the result being the data displayed.
+Plain virtual columns allow calculations within the cell using the `R<row-num>C<col-num>` cell referencing system. See the <<RC Cell Referencing System>> for more information. Cell contents are run as code with the result being the data displayed. Code entered only applies to the current cell as opposed to how VID repeating columns work.
 
-==== Type 2: VID Virtual Columns
+==== Type 2: Virtual Columns with repeating VID Overlay
 
-VID virtual columns contain VID code in cells:
+VID repeating virtual columns contain VID code that will repeat and fill the rest of the column. The code is run at each cell in the column.
 
 * Valid VID styles begin with `cell-` prefix (e.g., `cell-button`)
-* First cell in column is reserved for heading text
-* Second cell in column contains VID code that will repeat and fill the rest of the column unless another cell below contains VID code
+* The first row in a column is reserved for heading text
 
-=== Virtual Column Code
+==== Type 3: Virtual Columns with repeating Code Overlay
 
-Virtual column code can access:
+Code repeating virtual columns contain Red code that will repeat and fill the rest of the column. The code is run at each cell in the column.
 
-* `row-num` - Current row number
-* `col-num` - Current column number
-* `get-cell row col` - Get cell value
-* `get-row row` - Get entire row
-* `table-obj` - The table object
+* Valid code styles begin with `cell-` prefix (e.g., `cell-button`)
+* The first row in a column is reserved for heading text 
 
-=== RC Cell Referencing System
-
-Virtual columns support an easy cell referencing system:
-
-* `R2C2` - Direct cell data access (row 2, column 2)
-* `C2` - Access to specific column data in current row (column 2)
-* `R2` - Access to specific row data in current column (row 2)
-
-**Note:** Virtual columns count as a column but the data isn't directly accessible in the main table data structure.
-
-=== Custom Virtual Columns
+=== Custom Pre-Built Virtual Columns
 
 Custom virtual columns are pre-configured virtual columns:
 
-* `row-checkbox` - Used to select/deselect rows in a table. Has its own custom menu to allow context-related actions. Get all checked rows by:
-+
+==== cell-checkbox-for-row-selection
+Used to select/deselect rows in a table. Is only used on virtual columns. Has its own custom menu to allow context-related actions. Just right click on the checkbox to see the menu. 
+The Menu for this VID object is:
+
+
+* `Set Checkmarks` > `All (Filtered) On` This will set all row checkboxes for the filtered rows in the column to true
+
+* `Set Checkmarks` > `All (Filtered) Off` This will set all row checkboxes for the filtered rows in the column to false
+
+* `Set Checkmarks` > `Every Row On` This will set all row checkboxes for the column to true, regardless of filtering
+
+* `Set Checkmarks` > `Every Row Off` This will set all row checkboxes for the column to false, regardless of filtering
+
+* `Selected Records` > `Export to Clipboard` This will export the checked rows to the clipboard
+
+To programmatically get all checked rows use the `get-checked-rows` function:
+
 [source,red]
 ----
-probe table-obj/actors/get-checked-rows table-obj <column-num>
+USAGE:
+     GET-CHECKED-ROWS face col-id
+
+DESCRIPTION: 
+     Returns rows of data that have been checked off by the 'cell-checkbox-for-row-selection' overlay. 
+     GET-CHECKED-ROWS is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+     col-id       [integer! string!] 
+
+REFINEMENTS:
+     /only        => returns row indices only.
+
+Example Usage:
+probe table1/actors/get-checked-rows table1 -1 ; -1 is the column number
+or
+probe table1/actors/get-checked-rows table1 "rows-selected" ; "rows-selected" is the column name
 ----
-+
-Sorting is available for this type of column.
+
+Sorting which isn't normally available for logic! columns, is available for this column by using a custom sorting function where:
+
+* true = 1
+* false = 0
+* invalid = -1
+
+==== cell-button
+VID Button on each cell. Defaults to the following code: 
+
+[source,red]
+----
+cell-button "See Row Data" 
+    on-click [ 
+        print mold get-row row-num
+    ]
+----
+Which you can edit to your liking by right clicking on the button and selecting `Column > Overlay > Edit Overlay` (or press Alt+F2).
+
+==== cell-code-example
+Example code overlay. Defaults to the following code: 
+
+[source,red]
+----
+if row-num = 2 [ 
+	print "--------------------------------------------------------------------------------------"
+	print [ "Code Example at Column Heading:" mold get-col-header col-num  ]
+	print   "Right Click on the column and select the Menu: Column/Overlay/Edit Overaly (Alt + F2)," 
+	print   "to edit this example code." 
+	print "--------------------------------------------------------------------------------------"
+	set-cell-color green 
+	this-cell: rejoin  [  "COL (" col-num ") ROW (" row-num ")"]
+	print [ ">>get-cell 2" newline "==" get-cell 2 ]
+	print [ {>>get-cell "id"} newline "==" get-cell "id" ]
+	print [ ">>mold get-row row-num" newline "==" mold get-row row-num ]
+	print [ ">>get-data-at 2 2" newline "==" get-data-at 2 2 ]
+]
+----
+Which is designed to illustrate the use of the various functions and variables available to Red code in any overlay. Which of course can be edited to your liking by right clicking on the column and selecting `Column > Overlay > Edit Overlay` (or press Alt+F2).
+
+==== cells-to-red-yellow-green
+Color coding example based on values. The code for this is: 
+[source,red]
+----
+int: to-valid-integer this-cell
+case [ 
+    int < 25 [ set-cell-color green ]
+    all [ int >= 25 int <= 50 ] [ set-cell-color yellow ]
+    int > 50 [ set-cell-color red ]
+]
+----
+Which is designed to illustrate the use of 'set-cell-color' and 'to-valid-integer' functions.
+
+==== cell-New-Code-Overlay
+Template for new code overlay. Defaults to being empty, which you can edit to your liking by right clicking on the column and selecting `Column > Overlay > Edit Overlay` (or press Alt+F2). This is a good starting point for your own code overlays.
+
+=== Custom Pre-Built VID Columns
+==== data-drop-list
+Used to display a dropdown list of values from within the cell. This overlay is only used on data columns, not virtual columns. This overlay is designed to be a read-only column, so that data isn't changed inconsistently with the drop-list. It also comes with it's own custom menu to allow context-related actions which are:
+
+* `data-drop-list` > `Update List from Column Data` - Repopulates the dropdown list from column data
+* `data-drop-list` > `Edit List` - Allows manual editing of the dropdown list
+
+==== data-checkbox-for-logic
+Used to display a checkbox for data that is of type logic! (true/false). This overlay is only used on data columns, not virtual columns. This overlay is designed to be a read-only column, so that data isn't changed inconsistently with the underlying data.
+
+**Note:** Unlike `data-drop-list` and `cell-checkbox-for-row-selection`, `data-checkbox-for-logic` does not have a custom context menu. The checkbox can be toggled by clicking on it or using the F4 key.
 
 == Sorting
 
@@ -656,9 +773,12 @@ Frozen rows/columns are dark-colored. Freezing can be repeated, e.g., if the tab
 
 Cell editing is activated with:
 
+* Select the cell and start typing
 * Double-click on a cell
-* Press Enter on a cell
-* Right-click and select `Cell > Edit` from the local menu
+* Right-click on the cell and select `Cell > Edit` from the menu
+* Right-click on the cell and select `Cell > Multi-line Edit` from the menu
+* Select the cell and press `F2`
+* Select the cell and press `Shift+F2` for multi-line editing
 
 Editing is committed with Enter.
 
@@ -751,6 +871,8 @@ The table can open:
 
 * `.red` files - Red data format
 * `.redtbl` files - Binary table format
+* `.csv` files - CSV file format
+
 
 To open a file:
 
@@ -771,7 +893,7 @@ When you save a table as a `.red` file, a second file is also saved with the sam
 
 Saving these two files like this allows the user to save all configuration, overlay and customization data that is contained within the table. The original `.red` format only saved the data and some small number of configuration options.
 
-==== Saving as a .redtbl File
+==== Saving as a `.redtbl` File
 
 This is the new table file format, which is essentially saving all data, customization, overlays etc. into one file. This file is in the redbin format. It can be opened and inspected using this Red code:
 
@@ -781,15 +903,59 @@ redbin-data: load/as %table.redtbl 'redbin
 ----
 
 === State Files
+Table state files contain a subset of all configuration data that is contained within the table. It is suggested to save the table as a `.redtbl` file to ensure all configuration data is saved. This function has been included to ensure backwards compatibility with existing `.red` files.
 
-Table state includes:
 
-* Column widths and row heights
-* Frozen rows and columns
-* Column types
-* Overlays
-* Filters and sorting
-* Named ranges
+The following fields are saved in the state file:
+
+`frozen-rows` - Used to freeze rows
+
+`frozen-cols` - Used to freeze columns
+
+`top` - Used to set the top position
+
+`current` - Used to set the current position
+
+`col-sizes` - Used to set the column sizes
+
+`row-sizes` - Used to set the row sizes
+
+`box` - Used to set the cell size
+
+`row-index` - Used to set the row index
+
+`col-index` - Used to set the column index
+
+`auto-col` - Adds a numbered column to the table
+
+`auto-row` - Adds a numbered row to the table
+
+`col-type` - Used to set the column type
+
+`cells-selected` - Used to set the cells selected
+
+`anchor` - Used to set the anchor position
+
+`active` - Used to set the active position
+
+`names` - Used to set the named ranges
+
+`scroller-x` - Used to set the horizontal scroll 
+position
+
+`scroller-y` - Used to set the vertical scroll position
+
+`read-only-rows` - Used to set the read-only rows
+
+`read-only-cols` - Used to set the read-only columns
+
+`auto-incr` - Used to set the auto-increment
+
+`col-names` - Used to set the column names
+
+`auto-incr` - Used to set the auto-increment
+
+
 
 To save state:
 
@@ -862,19 +1028,7 @@ To set row height:
 * If holding down Control while dragging, sizes of all following rows will be changed too
 * If Ctrl-dragging on the first row, the default size is changed
 
-== Column and Overlay Simplification
 
-The table template uses a simplified model with two main concepts:
-
-=== Two Kinds of Columns
-
-1. **Normal Data Columns** - Standard columns that store data in `table-data`
-2. **Virtual Columns** - Columns not part of the main table data, saved in a separate space. These display with a red hue for identification.
-
-=== Two Types of Overlays
-
-1. **VID Repeating** - VID objects displayed in the cell space. All usable VID styles for data overlays begin with `data-` prefix, while virtual column VID styles begin with `cell-` prefix.
-2. **Code Repeating** - Red code that is run and has final say as to how a cell appears in regards to value and background color.
 
 == Advanced Features
 
@@ -918,11 +1072,11 @@ To find data:
 
 == Column Editing
 
-Column editing can be activated from the local menu, opened on the column you are going to edit. The editing command is entered into a code window and has a special format:
+Bulk column editing can be achieved by using the `Column > Edit ...` menu item. The editing command is entered into a code window and has a special format:
 
 === Column Edit Format
 
-In case of a single command, it takes a command with arguments, but with the main argument right after the command name omitted.
+In the case of using a command, that takes a single argument; the command is enterd with the main argument right after the command name omitted.
 
 For example, when you have opened a CSV file with one column as a formatted float, but with commas as thousand-separators, and you want to remove these commas before you can change the type of the column, then:
 
@@ -930,50 +1084,45 @@ For example, when you have opened a CSV file with one column as a formatted floa
 2. Select `Column > Edit ...`
 3. Enter: `replace/all comma ""`
 
-The missing argument (the column data) will be inserted automatically.
+The missing argument (series) will be inserted automatically.
 
-== Programming Interface
+== Programming Considerations
 
-=== Accessing Table Data
 
-[source,red]
-----
-; Get cell value
-value: face/table-data/:row/:col
+=== Special Context for Red Code 
 
-; Set cell value
-face/table-data/:row/:col: new-value
+All Red code in any overlay have access to the following functions and variables:
 
-; Get row
-row-data: face/table-data/:row
+==== Functions
 
-; Get column (requires iteration)
-column-data: collect [
-    foreach row face/table-data [
-        keep row/:col
-    ]
-]
-----
+* `set-cell-color <color>` - Set cell background color (tuple!)
+* `set-cell <val>` - Set the current cells value (any-type!)
+* `get-cell <col-num || col-name>` - Gets a cells value, col-num (integer!) or col-name (string!). See <<Set Column Names>> for more information.
+* `get-row <row-num>` - Get entire row
 
-=== Event Handlers
+==== Variables
+* `this-cell` - The current cell value, can be used to get or set the current cell value
+* `row-num` - The current row number, can be used to get the current row number
+* `col-num` - The current column number, can be used to get the current column number
+* `table-obj` - The underlying table object
+* `table-obj/table-data` - The table data
 
-The table provides several event handlers:
 
-* `on-create` - Called when table is created
-* `on-created` - Called after table is fully initialized
-* `on-down` - Mouse down event
-* `on-up` - Mouse up event
-* `on-click` - Click event
-* `on-dbl-click` - Double-click event
-* `on-key-down` - Key press event
-* `on-menu` - Menu selection event
-* `on-scroll` - Scroll event
-* `on-wheel` - Mouse wheel event
-* `on-change` - Called when cell data changes
 
-==== Change State
+=== RC Cell Referencing System
 
-The table supports a before and after flag to indicate when cell data has changed. The `face/change-state` can be `'before` or `'after`, and `face/selected` contains the address of the changed cell.
+Virtual columns support an easy cell referencing system:
+
+* `R2C2` - Direct cell data access (row 2, column 2)
+* `C2` - Access to specific column data in current row (column 2)
+* `R2` - Access to specific row data in current column (row 2)
+
+**Note:** Virtual columns count as a column but the data isn't directly accessible in the main table data structure.
+
+
+=== Capturing data changes
+
+The table style supports a before and after flag to indicate when cell data has changed. The `face/change-state` can be `'before` or `'after`, and `face/active` contains the address of the changed cell. The address returned is a pair of the column number and the row number.
 
 Example:
 
@@ -984,75 +1133,12 @@ view [
         ["a" "b" "c"]
         ["d" "e" "f"]
     ] on-change [
-        print ["on-change state =" face/change-state " at =" face/selected]
+        print ["on-change state =" face/change-state " at =" face/active]
     ]
 ]
 ----
 
-=== Custom Functions
-
-You can access table functions via `face/actors`:
-
-[source,red]
-----
-; Fill/refresh the table
-face/actors/fill face
-
-; Get data address from event
-address: face/actors/get-data-address face event
-
-; Get column number
-col: face/actors/get-col-number face event
-
-; Get row number
-row: face/actors/get-row-number face event
-----
-
-=== Adding Custom Overlays
-
-To add a custom VID overlay:
-
-[source,red]
-----
-face/vid-lib/my-custom-overlay: make object! [
-    id: "my-custom-overlay"
-    vid: {text "Custom"}
-    code: [["code" "here"]]
-    datatype: "string"  ; Optional
-]
-----
-
-To add a custom code overlay:
-
-[source,red]
-----
-face/code-lib/my-custom-code: make object! [
-    id: "my-custom-code"
-    code: [["code" "here"]]
-    datatype: "string"  ; Optional
-]
-----
-
-=== Coding Within VID or Code Overlays
-
-When writing code within a VID or Code overlay, the following functions and variables are available:
-
-==== Cell Functions
-
-* `get-cell id` - Get cell value. `id` can be either a column number (integer!) or a column name string. **Note:** Column names need to be set first by using the menu item: "Column > Set Column Names".
-* `get-row <row-num>` - Get entire row data (integer!)
-* `set-cell-color <color>` - Set cell background color (tuple!)
-* `set-cell <val>` - Set cell value (any-type!)
-
-==== Variables
-
-* `this-cell` - Used to get the current cell value, as well as set the current cell value (doesn't affect actual data, but does affect how the data is displayed)
-* `row-num` - Current row number
-* `col-num` - Current column number
-* `table-obj` - Main object that gives full access to the entire table context
-* `table-obj/table-data` - Block providing easy access to all of the data in the current table
-
-==== VID Cell Specific
+==== VID Cell Address
 
 All VID cell styles have `face/extra/addr` available to determine where the VID cell is located within the table data structure.
 
@@ -1068,7 +1154,7 @@ The following type conversion functions are available:
 * `to-valid-tuple` - Convert to valid tuple!
 * `to-valid-money` - Convert to valid money (necessary with float calculations, rounds up to next cent)
 
-These functions are used internally to ensure that the data is valid and can be used in the table. They are also available for use in your own code.
+These functions are used internally to ensure that the data of any cell is valid. They are also available for use in your own code.
 
 **Note:** In a virtual column, it is good practice to set all cells to something (even "") otherwise that cell will display "none".
 
@@ -1079,41 +1165,12 @@ These functions are used internally to ensure that the data is valid and can be 
 The table accepts the following options:
 
 * `sheet: yes` - Enable spreadsheet mode
-* `auto-col: yes` - Auto-size columns
-* `auto-row: yes` - Auto-size rows
+* `auto-col: yes` - Adds a numbered column to the table
+* `auto-row: yes` - Adds a numbered row to the table
 * `auto-save: yes` - Auto-save to file (requires file data source) 
-**Note:** This is not very useful for large files. It can slow down table operations.
-* `config: [options]` - Configuration block
+**Note:** This can slow down table operations when used with large files.
 
-=== Configuration Block
 
-The configuration block can contain:
-
-[source,red]
-----
-config: [
-    frozen-cols: [1 2]        ; Frozen column indices
-    frozen-rows: [1]         ; Frozen row indices
-    read-only-cols: [3]      ; Read-only column indices
-    read-only-rows: [2]      ; Read-only row indices
-    auto-incr: [4]           ; Auto-increment column indices
-    col-names: ["Name" "Age"] ; Column names
-    col-index: [1 2 3]      ; Column index order
-    row-index: [1 2 3]      ; Row index order
-    sizes: [                 ; Custom sizes
-        x: [100 200 150]    ; Column widths
-        y: [25 30 25]       ; Row heights
-    ]
-    col-type: [              ; Column types
-        1: 'string!
-        2: 'integer!
-    ]
-    defaults: [              ; Default values
-        1: "Default"
-        2: 0
-    ]
-]
-----
 
 == Troubleshooting
 
@@ -1153,73 +1210,6 @@ This error occurs when trying to set a path on a `none` value. Ensure that objec
 
 Some operations require a column type to be set first. Set the column type via `Column > Type`.
 
-== Examples
-
-=== Basic Table
-
-[source,red]
-----
-view [
-    title "Basic Table"
-    table data [
-        ["Name" "Age" "City"]
-        ["John" 25 "New York"]
-        ["Jane" 30 "London"]
-        ["Bob" 35 "Paris"]
-    ]
-]
-----
-
-=== Table with Frozen Header
-
-[source,red]
-----
-view [
-    title "Table with Frozen Header"
-    table data [
-        ["Name" "Age" "City"]
-        ["John" 25 "New York"]
-        ["Jane" 30 "London"]
-    ] options [
-        config: [
-            frozen-rows: [1]
-        ]
-    ]
-]
-----
-
-=== Table with Dropdown Column
-
-[source,red]
-----
-view [
-    title "Table with Dropdown"
-    table data [
-        ["Name" "Status"]
-        ["John" "Active"]
-        ["Jane" "Inactive"]
-    ] options [
-        config: [
-            frozen-rows: [1]
-        ]
-    ]
-]
-----
-1. After creation Right-click on the column 2
-2. Select Menu item: `Column > Overlay > Apply repeating VID` 
-3. Select `data-drop-list`
-
-
-
-=== Loading from File
-
-[source,red]
-----
-view [
-    title "Table from File"
-    table data %mydata.red
-]
-----
 
 == Appendix
 
@@ -1286,6 +1276,41 @@ face: make object! [
     auto-row?: false         ; Auto-size rows
 ]
 ----
+
+=== Data Structure
+
+The table data is stored in `face/table-data` as a block of blocks, where each inner block represents a row.
+
+[source,red]
+----
+table-data: [
+    ["Header1" "Header2" "Header3"]  ; Row 1 (often frozen as header)
+    ["Data1" "Data2" "Data3"]         ; Row 2
+    ["Data4" "Data5" "Data6"]         ; Row 3
+]
+----
+
+=== Coordinate Systems
+
+The table uses multiple coordinate systems:
+
+* **Data coordinates:** The actual row/column indices in `table-data`
+* **Draw coordinates:** The visual position on screen
+* **Index coordinates:** The position in the index arrays
+
+Functions are provided to convert between these systems:
+
+* `get-data-address` - Get data coordinates from event
+* `get-draw-address` - Get draw coordinates from event
+* `get-logic-address` - Convert draw to data coordinates
+
+=== Frozen Rows and Columns
+
+Frozen rows and columns remain visible when scrolling. They are typically used for headers.
+
+* Frozen rows are stored in `face/frozen-rows`
+* Frozen columns are stored in `face/frozen-cols`
+* The number of frozen rows/columns is in `face/frozen`
 
 === Function Reference
 
@@ -1397,12 +1422,6 @@ This is the new table file format, which saves all data, customization, overlays
 ----
 redbin-data: load/as %table.redtbl 'redbin
 ----
-
-=== Version History
-
-* **0.106** (7-Jan-2026) - Current version
-* Custom fork by @mikeyaunish
-* Original by @toomasv
 
 == License and Credits
 
