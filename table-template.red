@@ -3,8 +3,8 @@ Red [
 	author: {@toomasv  custom fork by: @mikeyaunish}
 	file: %table-template.red
 	git-url: https://github.com/mikeyaunish/table-template
-	version: 0.115
-	date: 16-Feb-2026
+	version: 0.116
+	date: 18-Feb-2026
 ]
 #include %table-template-support-scripts/style.red
 #include %table-template-support-scripts/re.red
@@ -18,7 +18,7 @@ tbl: [
 	size: 317x217
 	color: silver
 	flags: [scrollable all-over]
-	version: 0.115
+	version: 0.116
 	identifier: "table-template"
 	scroller: 			make map! 1
 	index: 				make map! 2
@@ -3529,14 +3529,15 @@ tbl: [
 			refresh-view face
 		]
 		
+		
 		remove-vid-col-decor: function [
 			face [object!]
 			col [integer!]
 			/delete {delete entire entry}
 		][
-			row-len: ((length? face/draw ) - 9)
+			draw-len: (first-non-block face/draw) - 1
 			r: 1
-			while [r <= row-len] [
+			while [r <= draw-len] [
 				either delete [
 					remove at (pick face/draw r) col							
 				][

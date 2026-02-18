@@ -2,6 +2,14 @@ Red [
     Title: "table-template-support-scripts.red"
 ]
 
+first-non-block: function [ data [block!]][
+	forall data [
+	    unless block? data/1 [
+	        return index? data
+	    ]
+	]
+]
+
 find-unused-key: function [ 
 	{find next unused key in map of negative keys}
 	m [map!]
