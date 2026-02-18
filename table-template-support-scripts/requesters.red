@@ -311,6 +311,7 @@ set 'request-list function [	;-- request-list:
         ok-status: 'all-over ;-- bogus place holder
     ]
 	view view-composed: compose/only/deep [
+		title "Select..."
 		across
 		text font-size 12 200 (form msg) return 
 		f-lst: text-list sz data (data)

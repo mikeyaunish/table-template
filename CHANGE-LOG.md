@@ -1,10 +1,11 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-Changes that deviate from the initial project are documented in reverse chronological order below. 
-
-### 13-JAN-2026 Version: 0.111
-- Major changes to the entire system. See [Table Template Changes Jan 2026](docs/table-template-changes.adoc).
+### 13-FEB-2026 Version: 0.113
+- Major improvements and updates see:
+	/docs/table-template-documentation.adoc 
+  	/docs/table-template-changes.adoc
+  	/docs/documentation-changelog-11-Feb-2026.adoc
+- Change logs will now be in the /docs/ folder
 
 ### 4-AUG-2025 Version: 0.093
 - Add 'change-state' flag to be used with 'on-change' to determine 'before and 'after changes.

@@ -1,0 +1,51 @@
+= Table Template Documentation — Changelog 11-Feb-2026
+:author: @toomasv, @mikeyaunish
+:toc:
+:icons: font
+
+== New Documentation content
+
+=== Quick Start section
+
+* A new level-2 section *Quick Start* has been added after *Dependencies* and before *Getting Started*.
+* It contains a NOTE directing readers to the `/examples-gallery` folder and the `examples-gallery.red` program to run and experiment with examples from the documentation.
+
+=== Programming Considerations — new and expanded content
+
+* **Code Overlay order of execution** — New subsection describing that code overlays run left-to-right, top-to-bottom, with no dependency checking; recommends pulling values from cells to the left when one cell depends on another. Notes that dependency and circular-reference checking are planned for the future.
+* **Special functions and variables** — The former short bullet list has been replaced with:
+** **Deprecation** — A note that the `this-cell` variable is deprecated in favor of dedicated getter/setter functions.
+** **Overview image** — Reference to `image::images/table-user-functions.png[]`.
+** **Getter functions** — Formal USAGE/DESCRIPTION blocks for:
+*** `get-this-cell` — Current data cell value (Code Overlay only, Data cells only).
+*** `get-this-row` — Current row (Code and VID Overlay, Data cells only).
+*** `get-cell col-id` — Cell value by column id (integer or string).
+*** `get-table-data col-id row-id` — Table data at col/row, with `/row` refinement.
+** **Setter functions** — Formal USAGE/DESCRIPTION blocks for:
+*** `set-this-cell val` — Set current cell (Code Overlay; Data and Virtual columns).
+*** `set-cell col-id val` — Set cell by column id (Code Overlay; Data and Virtual columns).
+*** `set-table-data col-id row-id val` — Modify table data, with `/row` and `/refresh` refinements.
+*** `set-cell-color color-val` — Set current cell color (Code Overlay; Data and Virtual cells).
+** **Variables** — Formal USAGE/DESCRIPTION blocks for `row-num`, `col-num`, `table-obj`, `table-obj/table-data`, `table-obj/row-index`, and `table-obj/col-index` (replacing the previous short bullet list that included `this-cell`).
+* **Table Actors** — New subsection *Table Actors and Variable useful in your Red program* for programmatic access outside overlays:
+** *Getting Data* — `get-data face col-id row-id` with `/row` and examples.
+** *Setting Data* — `set-data face col-id row-id val` with `/row` and examples.
+** *Appending a Row* — `append-row face`.
+** *Saving Table Data* — `save-data face`.
+** *Refreshing the Table* — `refresh-view face`, plus note that `set-table-data`, `set-data`, and `set-cell` can refresh when used with `/refresh`.
+* **Function Applicability Matrix** — New subsection with a table showing which functions are available in:
+** Data columns and Data columns with Code overlay
+** Virtual columns and Virtual columns with Code overlay
+** Data columns with VID Overlay (e.g. in `on-change`)
+** Virtual columns with VID Overlay
+* Includes a short legend (✓/✗) and notes that `set-cell-color` and cell-modifying functions (`set-this-cell`, `set-cell`) are not compatible with VID Overlay columns, and that `get-this-cell` works only with Data columns.
+* **VID Object Context** — New subsection describing `face/extra/data-addr` and `face/extra/draw-addr` for VID objects (e.g. `cell-button`), with a pointer to the examples gallery and the `vid-object-address.red` example.
+* **Advanced Examples** — New subsection with three worked examples:
+** *Example #1* — Using `get-table-data`, `set-cell-color`, `get-this-cell`, `row-num`, and `col-num` for conditional coloring; references `get-table-data-example-no-code.redtbl` and images.
+** *Example #2* — Using `set-cell`, `get-cell`, `set-this-cell`, and `get-this-cell` with the "Full Name" and "Years in Field" columns; references `set-cell-example.red` and images.
+** *Example #3* — Using `set-table-data` and `set-cell-color` for a highlighted total row; references `set-table-data-example.red` and images.
+
+=== VID Cell Address
+
+* **Updated** — The variables `face/extra/data-addr` and `face/extra/draw-addr` are automatically set for VID objects.
+

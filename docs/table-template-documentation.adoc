@@ -1,8 +1,8 @@
 :experimental:
 = Table Template User Documentation
 :author: @toomasv, @mikeyaunish
-:version: 0.106
-:revdate: 13-Jan-2026
+:version: 0.115
+:revdate: 16-Feb-2026
 :toc: left
 :toclevels: 3
 :sectnums:
@@ -30,7 +30,8 @@ The `table-template.red` file provides a complete table widget implementation fo
 * Context menus
 
 === Version Information
-* **Date:** 13-Jan-2026
+* **Version:** 0.115
+* **Date:** 16-Feb-2026
 * **Repository:** https://github.com/mikeyaunish/table-template[GitHub]
 
 === Dependencies
@@ -44,18 +45,24 @@ The table template requires the following support scripts:
 * `table-template-support-scripts/requesters.red`
 * `table-template-support-scripts/request-array.red`
 
+== Quick Start
+
+NOTE: If you would rather just see the code in action, all of the examples in this documentation can be found in the `/examples-gallery` folder. Just run the `examples-gallery.red` program and select the example you want to see. You are free to change and experiment with the code as you see fit.
+
+
 == Getting Started
 
 === Basic Usage
 
-The table template is used as a VID style. To enable the table style, include the file:
+
+The table template is a VID style. To enable the table style, include the file:
 
 [source,red]
 ----
 #include %table-template.red
 ----
 
-After that, the table style can be used in layout. Here's a basic example:
+After that, the table style can be used in a layout. Here's a basic example:
 
 [source,red]
 ----
@@ -130,7 +137,9 @@ view [
 ]
 ----
 
-When `auto-save` is enabled, changes to the table are automatically saved to the source file. This is useful for maintaining data persistence, but note that this can slow down table operations, especially with large files.
+When `auto-save` is enabled, changes to the table are automatically saved to the source file. This is useful for maintaining data persistence, but note that this can slow down table operations, especially with large files. This feature is most useful when first creating a table or when you are not dealing with a large amount of data. 
+
+NOTE: If you are using the `auto-save` option in your external Red program, you should disable it when you are done making changes to the table. This is to avoid slowdowns when the table gets larger.
 
 === Auto-Indexed Columns
 
@@ -274,6 +283,675 @@ view [
 ]
 ----
 
+== Advanced Examples
+
+
+==== Coloring Cells Based on Data
+This example illustrates how to use the `get-table-data` , `set-cell-color` and `get-this-cell` functions to get the data from a column and use it to color other cells in the column. This example also illustrates the use of the `row-num` and `col-num` variables to get the current row and column number.
+
+* Open the table-lab.red program
+* Open the table: /examples-gallery/get-table-data-example-no-code.redtbl
+* It should look like this:
+
+image::images/get-table-data.png[]
+
+* Add a Code Overlay to the "Score" column by right clicking on the column header and selecting the Menu: `Column > Overlay > Apply Repeating Code` and select the `cell-New-Code-Overlay` option. This will open a Code Editor window. Copy and paste the code below into the code window and click OK.
+
+[source,red]
+----
+if row-num > 4 [	;-- skip the first 4 rows where our reference data is located
+	if get-this-cell <= (get-table-data col-num 2) [ ;-- row #2 is the red limit
+		set-cell-color red
+	]
+	if all [
+		get-this-cell > (get-table-data col-num 2)		;-- row #2 is the red limit
+		get-this-cell <= (get-table-data col-num 3) 	;-- row #3 is the yellow limit
+	][
+		set-cell-color yellow
+	]
+	if all [
+		get-this-cell > (get-table-data col-num 3) ;-- row #3 is the green limit
+	][
+		set-cell-color green
+	]
+]
+----
+The resulting table should look like this:
+
+image::images/get-table-data-results.png[]
+
+This is the standard procedure for adding a Code Overlay to a column.
+
+=== Setting and Getting Cell Data
+
+This example illustrates how to use the functions: `set-cell`, `get-cell`, `set-this-cell` and `get-this-cell` to set and get the value of a cell.
+
+* Open the table-lab.red program
+* Open the table: /examples/set-cell-example.red
+* It should look like this:
+
+image::images/set-cell-example1.png[]
+
+There is a Code Overlay on the column named: "Full Name" which contains the code:
+
+[source,red]
+----
+set-this-cell rejoin [ (get-cell "first-name") space (get-cell "last-name") ]
+----
+You can inspect and change this code by right clicking on the column header and selecting `Column > Overlay > Edit Overlay` (or press Alt+F2).
+
+The "Years in Field" column has a Code Overlay with the code:
+
+[source,red]
+----
+if get-this-cell < 2 [ set-cell "experience-level" "Rookie" ] ;-- less than 2 years is Rookie
+if all [
+	get-this-cell > 3 
+	get-this-cell < 6 ;-- between 3 and 6 years is Apprentice
+][
+	set-cell "experience-level" "Apprentice"
+]
+if get-this-cell > 20 [ set-cell "experience-level" "Master" ] ;-- greater than 20 years is Master
+----
+
+You can inspect and change this code by right clicking on the column header and selecting `Column > Overlay > Edit Overlay` (or press Alt+F2).
+
+* Enter data into the "First Name" and "Last Name" cells and observe how the "Full Name" column is updated.
+* Enter data into the "Years in Field" cells and observe how the "Experience Level" column is updated.
+
+=== Creating a Highlighted Total Row
+
+This example illustrates how to use the functions: `set-table-data` and `set-cell-color` to create a highlighted total row. Also shows how to use the `table-obj` variable to access meta-data about the underlying table.
+
+NOTE: If you are using the `table-obj` variable in your external Red program, you should replace it with the table's face object name. This avoids conflicts that may occur when using multiple tables.
+
+* Open the table-lab.red program
+* Open the table: /examples/set-table-data-example.red
+* It should look like this:
+
+image::images/set-table-data-example.png[]
+
+The `Name` column has a Code Overlay with the code:
+[source,red]
+----
+if row-num = ( last table-obj/row-index ) [     ;-- Once we are at the last row
+	set-this-cell "                    Total:" 
+	set-cell-color green
+]
+----
+
+The `Points` column has a Code Overlay with the code:
+[source,red]
+----
+last-row: (last table-obj/row-index)
+if row-num = last-row [
+	accum: 0
+	foreach row table-obj/row-index [
+		if all [ 
+			row > 1 
+			row <> last-row
+		][
+			if (get-table-data "name" row ) = "                    Total:" [
+				;-- This is an old Total line that needs to be removed.
+				set-table-data "name" row ""
+				set-table-data "points" row 0
+			]
+			accum: accum + to-valid-integer (get-table-data col-num row)
+		]
+	]
+	set-table-data col-num last-row accum
+]
+----
+As data in the "Points" column is updated, the total is calculated and displayed in the last row. The Overlay will also adapt to any rows being added or removed.
+
+=== Appending data to a table with your own Red program
+
+This example illustrates how to use the functions: `append-row` and `set-data` to append data to a table with your own Red program.
+
+* Run the red program: /examples-gallery/append-data-to-table.red 
+* Click on the button `Append Data to Table`
+* The table should be updated with the new data.
+
+Here is the code for the button that appends data to the table:
+[source,red]
+----
+on-click [
+     table1/actors/append-row table1
+     table1/actors/set-data/row/refresh table1 1 (last table1/row-index) 
+          reduce [ "Paul" "Brooker" (random 100) "Blue" ] 
+          ;-- the new data to be appended to the table
+]
+----
+
+Open the file /examples-gallery/append-data-to-table.red to see the full code.
+
+== Programming Considerations
+
+=== Code Overlay order of execution
+
+Code overlays are executed in a left to right, top to bottom order. Currently there is no dependency checking, so if a cell depends on the value of another cell, it is best to pull values from a cell that is to the left of the current cell. In the future, dependency checking and circular reference checking will be added to the code overlay engine.
+
+=== Special functions and variables available in Code and VID Overlays
+
+**Note:** The use of `this-cell` variable has been deprecated. Use the dedicated getter and setter functions instead (see below).
+
+==== Overview of functions
+image::images/table-user-functions.png[]
+
+All Red code in any Overlay has access to the following special functions and variables:
+
+==== Getter Functions
+
+[source,red]
+----
+USAGE:
+     GET-THIS-CELL 
+
+DESCRIPTION: 
+     Returns the value of the current Data cell. ONLY available in the Code Overlay context. Operates ONLY on Data cells. 
+     GET-THIS-CELL is a function! value.
+----
+
+[source,red]
+----
+USAGE:
+     GET-THIS-ROW 
+
+DESCRIPTION: 
+     Returns the value of the entire current row. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. 
+     GET-THIS-ROW is a function! value.
+----
+
+[source,red]
+----
+USAGE:
+     GET-CELL col-id
+
+DESCRIPTION: 
+     Returns the value of the column given. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. 
+     GET-CELL is a function! value.
+
+ARGUMENTS:
+     col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
+----
+
+[source,red]
+----
+USAGE:
+     GET-TABLE-DATA col-id row-id
+
+DESCRIPTION: 
+     Returns the table data at the col and row given. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. 
+     GET-TABLE-DATA is a function! value.
+
+ARGUMENTS:
+     col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
+     row-id       [integer!] 
+
+REFINEMENTS:
+     /row         => Will return an entire row of data as a block.
+----
+
+[source,red]
+----
+     USAGE:
+     GET-COL-HEADER col-id
+
+DESCRIPTION: 
+     Returns the value of a given column header. 
+     GET-COL-HEADER is a function! value.
+
+ARGUMENTS:
+     col-id       [integer!] 
+----
+
+==== Setter Functions
+
+[source,red]
+----
+     SET-THIS-CELL val
+
+DESCRIPTION: 
+     Sets the value of the current cell. ONLY available in the Code Overlay context. Operates on both Data and Virtual columns. 
+     SET-THIS-CELL is a function! value.
+
+ARGUMENTS:
+     val           
+----
+
+[source,red]
+----
+USAGE:
+     SET-CELL col-id val
+
+DESCRIPTION: 
+     Sets the value of the current cell. ONLY available in the Code Overlay context. Operates on both Data and Virtual columns. 
+     SET-CELL is a function! value.
+
+ARGUMENTS:
+     col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
+     val          [any-type!] 
+----
+
+[source,red]
+----
+USAGE:
+     SET-TABLE-DATA col-id row-id val
+
+DESCRIPTION: 
+     Modify the table data. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. 
+     SET-TABLE-DATA is a function! value.
+
+ARGUMENTS:
+     col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
+     row-id       [integer!] 
+     val          [any-type!] {The data for the single cell or a block if setting an entire row.}
+
+REFINEMENTS:
+     /row         => Will modify an entire row, datatypes must match row.
+     /refresh     => refresh the view after data modified.
+----
+
+[source,red]
+----
+USAGE:
+     SET-CELL-COLOR color-val
+
+DESCRIPTION: 
+     Change color of current cell. ONLY available in the Code Overlay context. Operates on both Data and Virtual cells. 
+     SET-CELL-COLOR is a function! value.
+
+ARGUMENTS:
+     color-val    [tuple!] 
+----
+
+==== Variables
+[source,red]
+----
+USAGE:
+     ROW-NUM
+
+DESCRIPTION: 
+     Returns the current row number. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. 
+     ROW-NUM is a variable! value.
+----
+
+[source,red]
+----
+USAGE:
+     COL-NUM
+
+DESCRIPTION: 
+     Returns the current column number. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. 
+     COL-NUM is a variable! value.
+----
+
+[source,red]
+----
+USAGE:
+     TABLE-OBJ
+
+DESCRIPTION: 
+     Returns the underlying global table object. If using multiple tables, use the table's face object name instead
+     TABLE-OBJ is a variable! value.
+----
+
+[source,red]
+----
+USAGE:
+     TABLE-OBJ/TABLE-DATA
+
+DESCRIPTION: 
+     Returns the table data. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. 
+     TABLE-OBJ/TABLE-DATA is a variable! value.
+----
+
+[source,red]
+----
+USAGE:
+     TABLE-OBJ/ROW-INDEX
+
+DESCRIPTION: 
+     Returns the row index of the table. Negative values are used for Virtual rows.
+     TABLE-OBJ/ROW-INDEX is a variable! value.
+----
+
+[source,red]
+----
+USAGE:
+     TABLE-OBJ/COL-INDEX
+
+DESCRIPTION: 
+     Returns the column index. Operates on Data and Virtual columns. Negative values are used for Virtual columns.
+     TABLE-OBJ/COL-INDEX is a variable! value.
+----    
+
+=== Table Actors and Variable useful in your Red program
+
+When accessing table data from your Red program (outside of the Code or VID Overlay context), use the following functions through the table's actors:
+
+==== Table Actors
+===== Getting Data
+
+[source,red]
+----
+USAGE:
+     <table-name>/ACTORS/GET-DATA face col-id row-id
+
+DESCRIPTION: 
+     Returns table data. 
+     <table-name>/ACTORS/GET-DATA is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+     col-id       [integer! string!] {A string! col-id will attempt to match a currently configured column name.}
+     row-id       [integer!] 
+
+REFINEMENTS:
+     /row         => returns entire row of data.
+
+Example Usage:
+probe table1/actors/get-data table1 2 3  ;-- get the cell value of column 2 and row 3
+probe table1/actors/get-data/row table1 0 2  ;-- get all of row 2
+probe table1/actors/get-data table1 "id" 2  ;-- get the cell value of column "id" and row 2
+----
+
+===== Getting Checked Data
+
+[source,red]
+----
+USAGE:
+     <table-name>/ACTORS/GET-CHECKED-ROWS face col-id
+
+DESCRIPTION: 
+     Returns rows of data that have been checked by the 'cell-checkbox-for-row-selection' overlay. Use this when the table has a virtual column with that overlay and you need the full row data for checked rows from your Red program.
+     <table-name>/ACTORS/GET-CHECKED-ROWS is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+     col-id       [integer! string!] {Column number or column name of the checkbox-for-row-selection overlay.}
+
+REFINEMENTS:
+     /only        => returns row indices only (no row data).
+
+Example Usage:
+probe table1/actors/get-checked-rows table1 -1           ;-- by column number (-1 is a Virtualcolumn)
+probe table1/actors/get-checked-rows table1 "rows-selected"  ;-- by column name
+probe table1/actors/get-checked-rows/only table1 -1      ;-- row indices only for column -1 (Virtual column)
+----
+
+
+===== Setting Data
+
+[source,red]
+----
+USAGE:
+     <table-name>/ACTORS/SET-DATA face col-id row-id val
+
+DESCRIPTION: 
+     Sets table data and refreshes table display. 
+     <table-name>/ACTORS/SET-DATA is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+     col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
+     row-id       [integer!] 
+     val          [any-type!] 
+
+REFINEMENTS:
+     /row         => 'val block contains full row of pre-formatted data.
+
+Example Usage:
+table1/actors/set-data table1 2 3 "New Value"
+table1/actors/set-data table1 "name" 3 "New Name"
+table1/actors/set-data/row table1 2 ["Value1" "Value2" "Value3"]
+----
+
+===== Appending a Row to the Table
+[source,red]
+----
+USAGE:
+     <table-name>/ACTORS/APPEND-ROW face
+
+DESCRIPTION: 
+     Appends a new row to the table.
+     <table-name>/ACTORS/APPEND-ROW is a function! value.
+----
+
+===== Appending a Column to the Table
+[source,red]
+----
+USAGE:
+     <table-name>/ACTORS/APPEND-COLUMN face
+
+DESCRIPTION: 
+     Appends a new column to the table.
+     <table-name>/ACTORS/APPEND-COLUMN is a function! value.
+----
+
+===== Inserting a Column into the Table
+
+===== Saving Table Data
+
+[source,red]
+----
+USAGE:
+     <table-name>/ACTORS/SAVE-DATA face
+
+DESCRIPTION: 
+     Saves the table data to a file. 
+     <table-name>/ACTORS/SAVE-DATA is a function! value.
+----
+
+[source,red]
+----
+Example Usage:
+table1/actors/save-data table1
+----
+
+===== Save Table As
+
+[source,red]
+----
+USAGE:
+     <table-name>/ACTORS/SAVE-TABLE-AS face
+
+DESCRIPTION: 
+     Opens a "Save file as" dialog and saves the table to the chosen file. Supports .redtbl, .red, and .csv formats. Returns the file path if saved, or none if cancelled. Updates the table's data source to the new file.
+     <table-name>/ACTORS/SAVE-TABLE-AS is a function! value.
+----
+
+[source,red]
+----
+Example Usage:
+table1/actors/save-table-as table1
+----
+
+====== Refreshing the Table
+[source,red]
+----
+USAGE:
+     <table-name>/ACTORS/REFRESH-VIEW face
+
+DESCRIPTION: 
+     Refreshes the table display.
+     <table-name>/ACTORS/REFRESH-VIEW is a function! value.
+----
+
+[source,red]
+----
+Example Usage:
+table1/actors/refresh-view table1
+----
+
+NOTE: The following functions will also refresh the table display when the /refresh refinement is used.
+
+* `set-table-data` 
+* `set-data` 
+* `set-cell`
+
+=== Helper Functions
+==== Displaying Details about the Table
+[source,red]
+----
+USAGE:
+     TABLE-DETAILS face
+
+DESCRIPTION: 
+     Displays details about the table.
+     TABLE-DETAILS is a function! value.
+----
+
+[source,red]
+----
+Example Usage:
+table-details table1
+----
+
+
+=== RC Cell Referencing System
+
+Virtual columns support an easy cell referencing system:
+
+* `R2C2` - Direct cell data access (row 2, column 2)
+* `C2` - Access to specific column data in current row (column 2)
+* `R2` - Access to specific row data in current column (row 2)
+
+**Note:** Virtual columns count as a column but the data isn't directly accessible in the main table data structure.
+
+
+=== Capturing data changes
+
+The table style supports a before and after flag to indicate when cell data has changed. The `face/change-state` can be `'before` or `'after`, and `face/active` contains the address of the changed cell. The address returned is a pair of the column number and the row number.
+
+Example:
+
+[source,red]
+----
+view [
+    table1: table 400x200 data [
+        ["a" "b" "c"]
+        ["d" "e" "f"]
+    ] on-change [
+        print ["on-change state =" face/change-state " at =" face/active]
+    ]
+]
+----
+
+==== VID Cell Address
+
+All VID cell styles have `face/extra/addr` available to determine where the VID cell is located within the table data structure. Additionally, `face/extra/data-addr` and `face/extra/draw-addr` are automatically set for VID objects.
+
+==== Helper Functions
+
+The following type conversion functions are available:
+
+* `to-valid-file` - Convert to valid file!
+* `to-valid-integer` - Convert to valid integer!
+* `to-valid-logic` - Convert to valid logic!
+* `to-valid-pair` - Convert to valid pair!
+* `to-valid-string` - Convert to valid string!
+* `to-valid-tuple` - Convert to valid tuple!
+* `to-valid-money` - Convert to valid money (necessary with float calculations, rounds up to next cent)
+
+These functions are used internally to ensure that the data of any cell is valid. They are also available for use in your own code.
+
+**Note:** In a virtual column, it is good practice to set all cells to something (even "") otherwise that cell will display "none".
+
+=== Function Applicability Matrix
+
+The following table shows where the various functions are available and applicable to use across Data and Virtual columns:
+
+[cols="1,1,1,1,1", options="header"]
+|===
+| Function Name | Data Columns and Data Columns with Code | Virtual Columns and Virtual Columns with Code | Data Columns with VID Overlay (used in 'on-change' event) | Virtual Columns with VID Overlay
+
+| get-this-cell
+| ✓ true
+| ✗ false
+| ✓ true
+| ✗ false
+
+| get-this-row
+| ✓ true
+| ✓ true
+| ✓ true
+| ✓ true
+
+| get-cell
+| ✓ true
+| ✓ true
+| ✓ true
+| ✓ true
+
+| get-table-data
+| ✓ true
+| ✓ true
+| ✓ true
+| ✓ true
+
+| get-col-header
+| ✓ true
+| ✓ true
+| ✓ true
+| ✓ true
+
+|
+|
+|
+|
+|
+
+
+| set-this-cell
+| ✓ true
+| ✓ true
+| ✗ false
+| ✗ false
+
+| set-cell
+| ✓ true
+| ✓ true
+| ✗ false
+| ✗ false
+
+| set-table-data
+| ✓ true
+| ✓ true
+| ✓ true
+| ✓ true
+
+| set-cell-color
+| ✓ true
+| ✓ true
+| ✗ false
+| ✗ false
+|===
+
+==== Legend
+
+* ✓ = Available (true)
+* ✗ = Not Available / Not Valid (false)
+
+NOTE:  The `get-this-cell` function only works with Data columns, it will NOT work with Virtual columns.
+
+
+=== VID Object Context
+
+For VID Objects (currently the `cell-button` is the only stand alone VID Object supported) the following variables are automatically set:
+
+* `face/extra/data-addr` - Automatically set to the data address of the cell
+* `face/extra/draw-addr` - Automatically set to the draw address of the cell
+
+To see an example of a VID Object in action:
+
+* Run the /examples-gallery/examples-gallery.red program 
+* Select the `Advanced Examples` tab
+* Run the example file: `vid-object-address.red`
+
+
+
+
 == Menu System
 
 The table provides a comprehensive context menu system accessible via right-click.
@@ -350,7 +1028,7 @@ The table provides a comprehensive context menu system accessible via right-clic
 
 ==== Set Column Names
 
-Sets static names for columns (requires table to be loaded from a file, not just created from a block). These names are used to identify the columns in the table and are not affected by sorting, filtering or what headings are defined in the table data. These names are used by the `get-cell` function to get the definitve value of a cell. This allows the table to be used like a database with named columns.
+Sets static names for columns (requires table to be loaded from a file, not just created from a block). These names are used to identify the columns in the table and are not affected by sorting, filtering or what headings are defined in the table data. These names are used by the `get-cell` , `set-cell`, `get-table-data` and `set-table-data` functions to get and set the definitve value of a cell. This allows the table to be used like a database with named columns.
 
 ==== Sort
 
@@ -446,7 +1124,7 @@ When a column type is set, all data in that column is converted to the specified
 
 == Column Overlays
 
-Column overlays allow you to apply custom rendering or behavior to entire columns. Columns that have overlays are identified by a yellow line at the top of the column. This is to allow the user to easily identify columns that have overlays.
+Column overlays allow you to apply custom rendering or behavior to entire columns. Columns that have overlays are identified by a yellow line at the top of the column. This is to allow the creator and user to easily identify columns that have overlays.
 
 === Overlay Types
 
@@ -601,7 +1279,7 @@ VID Button on each cell. Defaults to the following code:
 ----
 cell-button "See Row Data" 
     on-click [ 
-        print mold get-row row-num
+        print mold get-this-row 
     ]
 ----
 Which you can edit to your liking by right clicking on the button and selecting `Column > Overlay > Edit Overlay` (or press Alt+F2).
@@ -618,11 +1296,9 @@ if row-num = 2 [
 	print   "to edit this example code." 
 	print "--------------------------------------------------------------------------------------"
 	set-cell-color green 
-	this-cell: rejoin  [  "COL (" col-num ") ROW (" row-num ")"]
+	set-this-cell rejoin  [  "COL (" col-num ") ROW (" row-num ")"]
 	print [ ">>get-cell 2" newline "==" get-cell 2 ]
 	print [ {>>get-cell "id"} newline "==" get-cell "id" ]
-	print [ ">>mold get-row row-num" newline "==" mold get-row row-num ]
-	print [ ">>get-data-at 2 2" newline "==" get-data-at 2 2 ]
 ]
 ----
 Which is designed to illustrate the use of the various functions and variables available to Red code in any overlay. Which of course can be edited to your liking by right clicking on the column and selecting `Column > Overlay > Edit Overlay` (or press Alt+F2).
@@ -1086,77 +1762,7 @@ For example, when you have opened a CSV file with one column as a formatted floa
 
 The missing argument (series) will be inserted automatically.
 
-== Programming Considerations
 
-
-=== Special Context for Red Code 
-
-All Red code in any overlay have access to the following functions and variables:
-
-==== Functions
-
-* `set-cell-color <color>` - Set cell background color (tuple!)
-* `set-cell <val>` - Set the current cells value (any-type!)
-* `get-cell <col-num || col-name>` - Gets a cells value, col-num (integer!) or col-name (string!). See <<Set Column Names>> for more information.
-* `get-row <row-num>` - Get entire row
-
-==== Variables
-* `this-cell` - The current cell value, can be used to get or set the current cell value
-* `row-num` - The current row number, can be used to get the current row number
-* `col-num` - The current column number, can be used to get the current column number
-* `table-obj` - The underlying table object
-* `table-obj/table-data` - The table data
-
-
-
-=== RC Cell Referencing System
-
-Virtual columns support an easy cell referencing system:
-
-* `R2C2` - Direct cell data access (row 2, column 2)
-* `C2` - Access to specific column data in current row (column 2)
-* `R2` - Access to specific row data in current column (row 2)
-
-**Note:** Virtual columns count as a column but the data isn't directly accessible in the main table data structure.
-
-
-=== Capturing data changes
-
-The table style supports a before and after flag to indicate when cell data has changed. The `face/change-state` can be `'before` or `'after`, and `face/active` contains the address of the changed cell. The address returned is a pair of the column number and the row number.
-
-Example:
-
-[source,red]
-----
-view [
-    table1: table 400x200 data [
-        ["a" "b" "c"]
-        ["d" "e" "f"]
-    ] on-change [
-        print ["on-change state =" face/change-state " at =" face/active]
-    ]
-]
-----
-
-==== VID Cell Address
-
-All VID cell styles have `face/extra/addr` available to determine where the VID cell is located within the table data structure.
-
-==== Helper Functions
-
-The following type conversion functions are available:
-
-* `to-valid-file` - Convert to valid file!
-* `to-valid-integer` - Convert to valid integer!
-* `to-valid-logic` - Convert to valid logic!
-* `to-valid-pair` - Convert to valid pair!
-* `to-valid-string` - Convert to valid string!
-* `to-valid-tuple` - Convert to valid tuple!
-* `to-valid-money` - Convert to valid money (necessary with float calculations, rounds up to next cent)
-
-These functions are used internally to ensure that the data of any cell is valid. They are also available for use in your own code.
-
-**Note:** In a virtual column, it is good practice to set all cells to something (even "") otherwise that cell will display "none".
 
 == Configuration Options
 
@@ -1186,13 +1792,10 @@ The table accepts the following options:
 
 * Ensure column type matches overlay requirements
 * Check that overlay code is valid Red code
-* Verify overlay is properly registered in `vid-lib` or `code-lib`
 
 ==== Sorting Issues
 
 * Ensure column data is of consistent type
-* For mixed types, use "Loaded" sort option
-* Check that frozen rows are not included in sort
 
 ==== Performance Issues
 

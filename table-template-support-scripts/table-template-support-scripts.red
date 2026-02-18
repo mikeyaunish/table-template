@@ -2,7 +2,17 @@ Red [
     Title: "table-template-support-scripts.red"
 ]
 
-
+find-unused-key: function [ 
+	{find next unused key in map of negative keys}
+	m [map!]
+][
+	needle: -1
+	keys: keys-of m
+	while [ find keys needle ][
+		needle: needle - 1
+	]
+	return needle 
+]		
 
 series-to-blocks: func [ 
 	series block-size
@@ -299,6 +309,11 @@ collect-table-details: function [
 ]
 
 table-details: function [ face [object!]][
+	either file? face/data [
+		print rejoin [ "Table filename: " mold to-string face/data ]
+	][
+		print "Table loaded from Red Data Block"
+	]
 	print-table/name (collect-table-details face) "Table Details"
 ]
 
@@ -461,7 +476,7 @@ to-kebab-names: function [
 	fld-blk: copy/deep field-block
 	collect [
 		foreach item fld-blk [ ;-- ie: [ 1 "id" ]
-			s: lowercase item/2
+			s: trim lowercase item/2
 			remove-punctuation s
     		printable-plus-space: charset [#"!" - #"~"]  
     		parse s [any [some printable-plus-space | change skip "-"]]			

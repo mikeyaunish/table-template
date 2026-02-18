@@ -1,1 +1,1 @@
-./data/sample-table.redtbl
+./data/work-order-completed.redtbl
