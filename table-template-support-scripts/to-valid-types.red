@@ -114,6 +114,7 @@ to-valid-float: function [ v [any-type!]][
 ]
 
 to-valid-money: function [ v [any-type!]][
+	if string? v [ v: load v ]
 	return either result: attempt [
 		either float? v [
 			to-money (round/to/ceiling v 0.01)
