@@ -66,7 +66,7 @@ table-CRUD-actors-layout: [
 	bg-panel: panel 128.128.128
 		[
 			origin 2x2
-			table1: table 500x200 
+			table1: table 700x200 
 				data %table-actors.redtbl
 		]
 	return 
