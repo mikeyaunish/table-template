@@ -3,8 +3,8 @@ Red [
 	author: {@toomasv  custom fork by: @mikeyaunish}
 	file: %table-template.red
 	git-url: https://github.com/mikeyaunish/table-template
-	version: 0.116
-	date: 18-Feb-2026
+	version: 0.117
+	date: 20-Feb-2026
 ]
 #include %table-template-support-scripts/style.red
 #include %table-template-support-scripts/re.red
@@ -18,7 +18,7 @@ tbl: [
 	size: 317x217
 	color: silver
 	flags: [scrollable all-over]
-	version: 0.116
+	version: 0.117
 	identifier: "table-template"
 	scroller: 			make map! 1
 	index: 				make map! 2
@@ -1435,6 +1435,45 @@ tbl: [
 			]			
 			return col-num
 		]
+		
+		clear-data: function [ 
+			{Clears specified data from the table}
+			face [object!]
+			col-id [integer! string!] {A col-id of string! will attempt to match a currently configured column name}
+			row-id [integer!]
+			/row {Clear entire row, ignores col-id}
+			/refresh {refresh view after data has been modified}
+		][
+			either row [
+				clear-row: copy []
+				loop (length? face/table-data/1)[append/only clear-row "" ]
+				set-data/row face col-id row-id clear-row
+			][
+				set-data face col-id row-id ""
+			]
+			if refresh [ face/actors/refresh-view face ]
+		]
+		
+		append-data-row: function [ 
+			{Appends a row of data at the end of existing data}
+			face [object!]
+			val [block!] {block of values that matches the row of data}
+			/refresh {refresh view after data has been modified}
+		][
+			append-row face
+			set-data/row/:refresh face 0 (last face/row-index) val
+		]
+		
+		insert-data-row: function [ 
+			{Inserts a row of data at the row specified}
+			face [object!]
+			row-id [integer!]
+			val [any-type!]
+			/refresh {refresh view after data has been modified}
+		][
+			insert-row face row-id
+			set-data/row/:refresh face 0 row-id val
+		]
 
 		set-data: function [ 
 			{sets table data and refreshes table display}
@@ -1445,8 +1484,9 @@ tbl: [
 			/row {'val block contains full row of pre-formatted data}
 			/refresh {refresh view after data has been modified}
 		][
+			row-ndx: pick face/row-index row-id
 			either row [
-				face/table-data/:row-id: val
+				face/table-data/:row-ndx: val
 			][
 				if string? col-id [
 					if not col-id: col-name-to-num face col-id "set-data" [ exit ]
@@ -1458,7 +1498,7 @@ tbl: [
 				][
 					col-type: "string"
 				]
-				face/table-data/:row-id/:col-id: cast-to-datatype col-type val
+				face/table-data/:row-ndx/:col-id: cast-to-datatype col-type val
 			]
 			if refresh [ face/actors/refresh-view face ]
 		]
@@ -1472,8 +1512,9 @@ tbl: [
 			row-id [integer!]
 			/row {returns entire row of data}
 		][
+			row-ndx: pick face/row-index row-id
 			either row [
-				return face/table-data/:row-id
+				return face/table-data/:row-ndx
 			][
 				if string? col-id [
 					if not col-id: col-name-to-num face col-id "set-data" [ exit ]
@@ -1485,7 +1526,7 @@ tbl: [
 				][
 					col-type: "string"
 				]
-				return cast-to-datatype col-type face/table-data/:row-id/:col-id
+				return cast-to-datatype col-type face/table-data/:row-ndx/:col-id
 			]
 		]
 		
@@ -3499,16 +3540,27 @@ tbl: [
 			show-marks face
 		]
 
-		insert-row: function [face [object!] event [event!]][
-			dr: get-draw-row face event
-			r: get-index-row face dr
+		insert-row: function [
+			{insert row at row specified}
+			face [object!] 
+			event [event! integer!] {when event is integer! this is the row number used}
+		][
+			either integer? event [
+				r: event 
+			][
+				dr: get-draw-row face event
+				r: get-index-row face dr
+			]			
 			add-new-row face
 			insert/only at face/row-index r face/total/y
 			refresh-view face
 			fill face 
 		]
 
-		append-row: function [face [object!]][
+		append-row: function [
+			{Appends an empty row at the end of the table data}
+			face [object!]
+		][ 
 			add-new-row face
 			append face/row-index face/total/y
 			refresh-view face
@@ -3565,12 +3617,17 @@ tbl: [
 		]
 
 		insert-col: function [
+			{Inserts a column at the column specified}
 			face [object!] 
-			event [event! none!]
-			/ret-col-num
+			event [event! none! integer!] {If event is integer! this is the column number used}
+			/ret-col-num {return the column number that has just been created}
 		][
-			dc: get-draw-col face event
-			c: get-index-col face dc
+			either integer? event [
+				c: event 
+			][
+				dc: get-draw-col face event
+				c: get-index-col face dc
+			]			
 			clear-vid-decor face
 			if value? '-target-vid-object- [ -target-vid-object-/visible?: false ]
 			
@@ -3582,8 +3639,9 @@ tbl: [
 		]
 
 		append-col: function [
+			{Append a column to the existing table data}
 			face [object!]
-			/ret-col-num
+			/ret-col-num {returns the new column number just created}
 		][
 			repeat i face/total/y [append face/table-data/:i none]
 			face/total/x: face/total/x + 1
@@ -3786,9 +3844,17 @@ tbl: [
 			refresh-view face
 		]
 
-		delete-row: function [face [object!] event [event!]][
-			dr: get-draw-row face event
-			ri: get-index-row face dr
+		delete-row: function [
+			{Deletes the specified row}		
+			face [object!] 
+			event [event! integer!] {when event is integer!, that row number is deleted}
+		][
+			either integer? event [
+				ri: event 
+			][
+				dr: get-draw-row face event
+				ri: get-index-row face dr
+			]
 			remove at face/table-data rd: face/row-index/:ri
 			remove at face/row-index ri
 			repeat i length? face/row-index [
@@ -4572,7 +4638,9 @@ tbl: [
 		paste-selected: function [face [object!] /transpose ][
 			if is-read-only? face to-pair 
 				reduce [ 
-					(face/pos/x + face/current/x - face/frozen/x) (face/pos/y + face/current/y - face/frozen/y) 
+					;(face/pos/x + face/current/x - face/frozen/x) (face/pos/y + face/current/y - face/frozen/y) 
+					(pick face/col-index (face/pos/x + face/current/x - face/frozen/x))
+					(pick face/row-index (face/pos/y + face/current/y - face/frozen/y))
 				][ 
 				exit 
 			]

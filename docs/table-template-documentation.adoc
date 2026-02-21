@@ -1,8 +1,8 @@
 :experimental:
 = Table Template User Documentation
 :author: @toomasv, @mikeyaunish
-:version: 0.115
-:revdate: 16-Feb-2026
+:version: 0.117
+:revdate: 20-Feb-2026
 :toc: left
 :toclevels: 3
 :sectnums:
@@ -30,8 +30,8 @@ The `table-template.red` file provides a complete table widget implementation fo
 * Context menus
 
 === Version Information
-* **Version:** 0.115
-* **Date:** 16-Feb-2026
+* **Version:** 0.117
+* **Date:** 20-Feb-2026
 * **Repository:** https://github.com/mikeyaunish/table-template[GitHub]
 
 === Dependencies
@@ -431,7 +431,7 @@ Open the file /examples-gallery/append-data-to-table.red to see the full code.
 
 Code overlays are executed in a left to right, top to bottom order. Currently there is no dependency checking, so if a cell depends on the value of another cell, it is best to pull values from a cell that is to the left of the current cell. In the future, dependency checking and circular reference checking will be added to the code overlay engine.
 
-=== Special functions and variables available in Code and VID Overlays
+=== Special functions and variables available in the Code and VID Overlay context
 
 **Note:** The use of `this-cell` variable has been deprecated. Use the dedicated getter and setter functions instead (see below).
 
@@ -626,12 +626,111 @@ DESCRIPTION:
      TABLE-OBJ/COL-INDEX is a variable! value.
 ----    
 
-=== Table Actors and Variable useful in your Red program
+=== Table Actors and Variables useful in your Red program
+
+NOTE: A quick start to understanding how the table actors work run the program:
+`/examples-gallery/table-CRUD-actors.red` program. 
 
 When accessing table data from your Red program (outside of the Code or VID Overlay context), use the following functions through the table's actors:
 
-==== Table Actors
-===== Getting Data
+==== Table Actors with a CRUD (Create, Read, Update, Delete) perspective
+===== CREATE Data
+[source,red]
+----
+USAGE:
+     TABLE1/ACTORS/APPEND-ROW face
+
+DESCRIPTION: 
+     Appends an empty row at the end of the table data. 
+     TABLE1/ACTORS/APPEND-ROW is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+----
+
+[source,red]
+----
+USAGE:
+     TABLE1/ACTORS/INSERT-ROW face event
+
+DESCRIPTION: 
+     insert row at row specified. 
+     TABLE1/ACTORS/INSERT-ROW is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+     event        [event! integer!] {when event is integer! this is the row number used.}
+----
+
+[source,red]
+----
+USAGE:
+     TABLE1/ACTORS/APPEND-DATA-ROW face val
+
+DESCRIPTION: 
+     Appends a row of data at the end of existing data. 
+     TABLE1/ACTORS/APPEND-DATA-ROW is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+     val          [block!] "block of values that matches the row of data."
+
+REFINEMENTS:
+     /refresh     => refresh view after data has been modified.
+----
+
+[source,red]
+----
+USAGE:
+     TABLE1/ACTORS/INSERT-DATA-ROW face row-id val
+
+DESCRIPTION: 
+     Inserts a row of data at the row specified. 
+     TABLE1/ACTORS/INSERT-DATA-ROW is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+     row-id       [integer!] 
+     val          [any-type!] 
+
+REFINEMENTS:
+     /refresh     => refresh view after data has been modified.
+----
+
+[source,red]
+----
+USAGE:
+     TABLE1/ACTORS/APPEND-COL face
+
+DESCRIPTION: 
+     Append a column to the existing table data. 
+     TABLE1/ACTORS/APPEND-COL is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+
+REFINEMENTS:
+     /ret-col-num => returns the new column number just created.
+----
+
+[source,red]
+----
+USAGE:
+     TABLE1/ACTORS/INSERT-COL face event
+
+DESCRIPTION: 
+     Inserts a column at the column specified. 
+     TABLE1/ACTORS/INSERT-COL is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+     event        [event! none! integer!] {If event is integer! this is the column number used.}
+
+REFINEMENTS:
+     /ret-col-num => return the column number that has just been created.
+----
+
+===== READ Data
 
 [source,red]
 ----
@@ -656,32 +755,7 @@ probe table1/actors/get-data/row table1 0 2  ;-- get all of row 2
 probe table1/actors/get-data table1 "id" 2  ;-- get the cell value of column "id" and row 2
 ----
 
-===== Getting Checked Data
-
-[source,red]
-----
-USAGE:
-     <table-name>/ACTORS/GET-CHECKED-ROWS face col-id
-
-DESCRIPTION: 
-     Returns rows of data that have been checked by the 'cell-checkbox-for-row-selection' overlay. Use this when the table has a virtual column with that overlay and you need the full row data for checked rows from your Red program.
-     <table-name>/ACTORS/GET-CHECKED-ROWS is a function! value.
-
-ARGUMENTS:
-     face         [object!] 
-     col-id       [integer! string!] {Column number or column name of the checkbox-for-row-selection overlay.}
-
-REFINEMENTS:
-     /only        => returns row indices only (no row data).
-
-Example Usage:
-probe table1/actors/get-checked-rows table1 -1           ;-- by column number (-1 is a Virtualcolumn)
-probe table1/actors/get-checked-rows table1 "rows-selected"  ;-- by column name
-probe table1/actors/get-checked-rows/only table1 -1      ;-- row indices only for column -1 (Virtual column)
-----
-
-
-===== Setting Data
+===== UPDATE Data
 
 [source,red]
 ----
@@ -707,29 +781,65 @@ table1/actors/set-data table1 "name" 3 "New Name"
 table1/actors/set-data/row table1 2 ["Value1" "Value2" "Value3"]
 ----
 
-===== Appending a Row to the Table
+===== DELETE Data
 [source,red]
 ----
 USAGE:
-     <table-name>/ACTORS/APPEND-ROW face
+     TABLE1/ACTORS/DELETE-ROW face event
 
 DESCRIPTION: 
-     Appends a new row to the table.
-     <table-name>/ACTORS/APPEND-ROW is a function! value.
-----
+     Deletes the specified row. 
+     TABLE1/ACTORS/DELETE-ROW is a function! value.
 
-===== Appending a Column to the Table
+ARGUMENTS:
+     face         [object!] 
+     event        [event! integer!] {when event is integer!, that row number is deleted.}
+----     
+
 [source,red]
 ----
 USAGE:
-     <table-name>/ACTORS/APPEND-COLUMN face
+     TABLE1/ACTORS/CLEAR-DATA face col-id row-id
 
 DESCRIPTION: 
-     Appends a new column to the table.
-     <table-name>/ACTORS/APPEND-COLUMN is a function! value.
+     Clears specified data from the table. 
+     TABLE1/ACTORS/CLEAR-DATA is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+     col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
+     row-id       [integer!] 
+
+REFINEMENTS:
+     /row         => Clear entire row, ignores col-id.
+     /refresh     => refresh view after data has been modified.
 ----
 
-===== Inserting a Column into the Table
+==== Other table actors
+
+===== Getting Checked Data
+
+[source,red]
+----
+USAGE:
+     <table-name>/ACTORS/GET-CHECKED-ROWS face col-id
+
+DESCRIPTION: 
+     Returns rows of data that have been checked by the 'cell-checkbox-for-row-selection' overlay. Use this when the table has a virtual column with that overlay and you need the full row data for checked rows from your Red program.
+     <table-name>/ACTORS/GET-CHECKED-ROWS is a function! value.
+
+ARGUMENTS:
+     face         [object!] 
+     col-id       [integer! string!] {Column number or column name of the checkbox-for-row-selection overlay.}
+
+REFINEMENTS:
+     /only        => returns row indices only (no row data).
+
+Example Usage:
+probe table1/actors/get-checked-rows table1 -1           ;-- by column number (-1 is a Virtualcolumn)
+probe table1/actors/get-checked-rows table1 "rows-selected"  ;-- by column name
+probe table1/actors/get-checked-rows/only table1 -1      ;-- row indices only for column -1 (Virtual column)
+----
 
 ===== Saving Table Data
 
