@@ -165,7 +165,7 @@ to-valid-date: function [ v [any-type!]][
 	][
 		result
 	][
-		11-11-1111
+		1-1-0000
 	]
 ]
 

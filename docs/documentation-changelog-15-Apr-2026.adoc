@@ -1,0 +1,60 @@
+= Table Template Documentation — Changelog 15-Apr-2026
+:author: @toomasv, @mikeyaunish
+:toc:
+:icons: font
+
+== Table Template changes (v0.117 → v0.120)
+
+=== Menu additions
+
+* **New** — *Print Code Overlays* menu item to print each column’s code overlay to the console.
+* **New** — *Refresh View* menu item to force a table refresh.
+
+=== Code Overlay API additions and deprecations
+
+* **New** — `get-cells` helper for reading table data (supports `/row`, `/rel`, `/next-row`, `/prev-row`, and `/extern`).
+* **Deprecated** — `get-table-data` is now marked deprecated in favor of `get-cells` (existing behavior retained).
+* **New** — `first-data-row?` and `last-data-row?` helpers to test whether a given row-id is the first/last data row.
+
+=== Table actors — data access improvements
+
+* **Changed** — `set-data` now treats `row-id` as the *visible* row number (respecting `row-index` reordering). A new `/index` refinement supports direct data-index addressing.
+* **Changed** — `get-data` now has:
+** `/rel rel-col rel-row` for relative addressing
+** `/next-row` and `/prev-row` conveniences
+** Improved validation/error messaging for invalid `row-id` / `col-id`
+* **Fixed/Changed** — `get-data` now indexes through `col-index` consistently when returning single-cell data.
+
+=== Linked-table VID overlay (`data-table-link`)
+
+* **New** — `data-table-link` VID overlay type:
+** Renders a small “…” control in-cell.
+** On click, can open a picker sourced from a linked table and write the chosen value back into the current table.
+** Includes a context menu with *Goto Linked Table* and *Edit Link* entries (where supported by the host app).
+* **New** — Supporting actors for linked table data:
+** `load-table-data`
+** `request-table`
+** `get-data-from` (supports reading from either another in-memory table face or a `.redtbl` file)
+
+=== Filtering and column-visibility behavior
+
+* **New** — `filter-with` actor to apply a filter using explicit `[col-index row-index]` blocks.
+* **Fixed** — `unfilter` now restores `col-index` as well as `row-index`.
+* **Fixed** — Clearing of VID decorations now occurs when hiding columns and when (un)filtering, preventing stale overlay visuals.
+
+=== Query helper
+
+* **New** — `query` helper for extracting table data using a SQL-like spec block:
+** `select` column names
+** `where` with multiple clauses and `and`/`or`
+** `order by` (ascending or `desc`)
+** `limit`
+** Optional `/index` return of matching `[col-indices row-indices]` for downstream operations.
+
+=== Miscellaneous fixes and refactors
+
+* **Renamed** — Internal use function `set-cells` → `set-table-cells`.
+* **Changed** — Cell editing now casts edited data using the configured `col-type` when writing back to `table-data`.
+* **Fixed** — `user-set-cell` adds a safety check to avoid attempting to write beyond the current `draw` block bounds.
+* **Changed** — Key handling now guards against accidentally treating some overlay-triggered keys as cell-edit input (`valid-key?` flag).
+* **Fixed** — `col-names` rebuild logic now skips missing names when updating column definitions (avoids errors when an expected old name is not present).

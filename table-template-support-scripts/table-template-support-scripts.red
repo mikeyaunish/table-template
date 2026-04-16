@@ -2,6 +2,56 @@ Red [
     Title: "table-template-support-scripts.red"
 ]
 
+get-absolute-offset: function [
+	face
+][
+	offset-adjust: [ 6x6 8x31 6x26 8x51 ] ; items 1 = no-decor, 2 = Win Bar only, 3 = Menu, 4 = Bar + Menu ; 4x4 added as a fix
+	adjust-index: 1
+	adjustment: 0
+	dprint [ "get-absolute-offset face/offset =" mold face/offset]
+	results: face/offset
+	target: face/parent
+	until [
+		dprint [ "get-absolute-offset" target/type "=" target/offset ]
+		results: results + target/offset
+		if target/type = 'window [
+			if not find target/flags 'no-title [ adjust-index: adjust-index + 1 ]
+			if not none? target/menu [ adjust-index: adjust-index + 2 ]
+			adjustment: (pick offset-adjust adjust-index)
+			dprint [ "get-absolute-offset adjustment =" mold adjustment]
+		]
+		target: target/parent
+		(target/type = 'screen)
+	]
+	dprint [ "get-absolute-offset results =" mold results " + adjustment " mold adjustment]
+	return (results + adjustment)
+]
+
+array-to-text-table: function [
+	array [block!] {block of blocks with last value being the index}
+][
+	print [ "array-to-text-table array =" mold array]
+	longest-item: append/dup copy [] 0 (length? array/1)
+	print [ "array-to-text-table longest-item =" mold longest-item] 
+	foreach row array [
+		repeat item ((length? array/1) - 1) [
+			longest-item/:item: max longest-item/:item (length? row/:item)
+		]			
+	]
+	text-blk: copy []
+	select-blk: copy []
+	foreach row array [
+		item-str: copy ""
+		repeat i ((length? row) - 1) [
+			append item-str pad (pick row i ) longest-item/:i
+			if i < ((length? row) - 1) [ append item-str "  " ]
+		]
+		append/only text-blk (copy item-str)
+		append/only select-blk reduce [ item-str (last row)]
+	]
+	return reduce [ text-blk select-blk ]
+]
+
 first-non-block: function [ data [block!]][
 	forall data [
 	    unless block? data/1 [
@@ -46,8 +96,86 @@ forskip: func ['word [word!] length [integer!] body [block!] /local orig][
     ]
 ]
 
-print-table: function [ 
-	{prints out in a table format from an array that contains key value pairs. V14}
+new-get-widest-column: function [
+	{return length of widest column. V1}	
+	blk [block!] 
+	column-block [block!]
+	/src-text {return the longest string instead of length value}
+][
+	print [ "get-widest-column blk =" mold blk]
+	print [ "get-widest-column column-block =" mold column-block]
+    either ((length? column-block) > 1) [ ; Get width of first field which in a block pair would be the label name
+        widest-col: length? to-valid-string (pck: pick (first blk) column-block/1) 
+        sec-col: column-block/2
+    ][
+        widest-col: 0
+        sec-col: column-block/1
+    ]
+    foreach i blk [
+        len: length? txt: to-valid-string ( pick i sec-col )
+        if ( len > widest-col )  [ 
+        	widest-col: len
+        	result: either src-text [ txt ] [ len ] 
+        ]
+    ]
+    return result
+]
+
+old-get-widest-column: function [
+	{return length of widest column. V1}
+	blk [block!] 
+	column-block [block!]
+][
+	print [ "get-widest-column #START get-widest-column V1" ]
+	;print [ "get-widest-column blk =" mold blk]
+	print [ "get-widest-column column-block =" mold column-block]
+    either ((length? column-block) > 1) [ ; Get width of first field which in a block pair would be the label name
+        widest-col: length? to-string (pck: pick (first blk) column-block/1) 
+        sec-col: column-block/2
+    ][
+        widest-col: 0
+        sec-col: column-block/1
+    ]
+    foreach i blk [
+        len: length? to-string ( pick i sec-col )
+        if ( len > widest-col )  [ widest-col: len ]
+    ]
+    print [ "get-widest-column #RETURING widest-col =" mold widest-col]
+    return widest-col
+]
+
+get-widest-column: function [
+	{return length of widest column. V3.0}
+	blk [block!] 
+	column-block [block!]
+	/return-string
+][
+    either ((length? column-block) > 1) [ ; Get width of first field which in a block pair would be the label name
+        widest-col: length? to-string (pck: pick (first blk) column-block/1) 
+        sec-col: column-block/2
+    ][
+        widest-col: 0
+        sec-col: column-block/1
+    ]
+    foreach i blk [
+        len: length? str: to-valid-string ( pick i sec-col )
+        if ( len > widest-col )  [ 
+        	widest-col: len 
+        	widest-string: copy str 
+        ]
+    ]
+    return either return-string [ widest-string ][ widest-col ]
+]
+
+ptd: print-table-data: function [ 
+	table-name [string!]
+	data [block!]
+][
+	print-table/columns/column-names/name (skip data 1)  (length? data/1) data/1 table-name
+]
+
+pt: print-table: function [ 
+	{prints out in a table format from an array that contains key value pairs. V16}
     'table-blk  {variable name containing the table}
     /width column-width [ integer! block!]
     /max-width max-wide [integer!] {Maximum width of any column.Only applies when /width is not used.}
@@ -89,25 +217,12 @@ print-table: function [
         either ((type? blk/1) <> block!)[ reduce [blk] ][ blk ]
     ]
     
-    set 'get-widest-column function [blk [block!] column-block [block!]] [
-        either ((length? column-block) > 1) [ ; Get width of first field which in a block pair would be the label name
-            widest-col: length? to-string (pck: pick (first blk) column-block/1) 
-            sec-col: column-block/2
-        ][
-            widest-col: 0
-            sec-col: column-block/1
-        ]
-        foreach i blk [
-            len: length? to-string ( pick i sec-col )
-            if ( len > widest-col )  [ widest-col: len ]
-        ]
-        return widest-col
-    ] 
+ 
     
-    either all [ (block? table-block/1) columns ] [
+    either all [ (not block? table-block/1) columns ] [
         table-block: series-to-blocks table-block num-of-cols
     ][
-        table-block: to-block-in-block table-block        
+        table-block: to-block-in-block table-block   
     ]
     
     max-wide: either max-width [ max-wide ][ 60 ]
@@ -137,8 +252,9 @@ print-table: function [
                     wc: max wc ( length? (pick col-names-blk ndx) )
                 ]
             ][
-                wc: get-widest-column table-block reduce [ (ndx * 2 - 1) (ndx * 2 )]    
+                wc: get-widest-column table-block reduce [ (ndx * 2 - 1) (ndx * 2 )] 
             ]
+            
             wc: either ((wc + 1) > max-wide)[ max-wide ][ wc ]
             append width-list ( wc + 1 )
             ndx: ndx + 1 
@@ -187,7 +303,6 @@ print-table: function [
         ndx: ndx + 1
     ]
     tprint ""
-    
     foreach entry table-block [ ;-- printing table body 
         ndx: 1
         tprin " "
@@ -203,7 +318,7 @@ print-table: function [
             y: first entry 
             pad-size: (pick width-list ndx)
             ndx: ndx + 1 
-            z: copy to-string y
+            z: copy to-valid-string y
             if (length? z) > ( pad-size - 1) [
                 z: copy/part z (pad-size - 2)
                 append z to-char 187 ;-- truncate data to fit
@@ -226,7 +341,7 @@ collect-table-details: function [
 			]
 		]
 	]
-	col-ndx: collect [ foreach i face/col-index [ keep to-string i ] ]
+	col-ndx: collect [ foreach i face/col-index [ keep to-valid-string i ] ]
 	access: collect [ 
 		foreach i face/col-index [
 			either find face/read-only-cols i [
@@ -493,3 +608,24 @@ to-kebab-names: function [
 	]
 ]
 
+view-table: function [ 
+	table-data [block!]
+][
+	sizes: collect [
+		repeat col-num (length? table-data/1) [ 
+			keep get-this-text-size get-widest-column/return-string table-data reduce [ col-num ]
+		]			
+	]
+	view [
+		title "view-table"
+		tbl: table 700x200 data table-data 
+			options [ config: [  frozen-rows: [ 1 ] ] ]
+			b: box 0x0 
+			on-created [
+				repeat ndx (length? table-data/1)[
+					tbl/sizes/x/:ndx: ((to-integer sizes/:ndx/x) + 5 )
+				]
+				tbl/actors/refresh-view tbl
+			]
+	]
+]

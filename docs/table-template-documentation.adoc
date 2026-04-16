@@ -774,6 +774,7 @@ ARGUMENTS:
 
 REFINEMENTS:
      /row         => 'val block contains full row of pre-formatted data.
+     /refresh     => refresh view after data has been modified.     
 
 Example Usage:
 table1/actors/set-data table1 2 3 "New Value"

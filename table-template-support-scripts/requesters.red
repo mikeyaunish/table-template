@@ -443,6 +443,8 @@ request-list-enhanced: func [
 	data-block [block!]
 	/size list-size [pair!]
 	/offset win-offset
+	/fixed-font {Use a fixed font size for the list}
+	/multi-select {enable multi-select of list items, returns a series of selected items}
 ][
 	results: copy ""
 	sort data-block
@@ -455,7 +457,15 @@ request-list-enhanced: func [
 	picker-size: to-pair reduce [ (list-size/x - 23) 23 ]
 	msg-size: to-pair reduce [ (list-size/x ) 23 ]
 	spacer-size: to-pair reduce [ (list-size/x - 109 ) 23 ]
-	view/flags/options [
+	font-info: either fixed-font [ [ font-name "Consolas" font-size 11 ]][ [ font-size 11 ] ]
+
+	empty-box: #"^(2B1C)"
+	full-box:  #"^(2705)"
+
+	
+	picker-state: either multi-select [ 'disabled ][ [] ]
+	
+	view/flags/options compose [
 		title "Select"
 		on-close [ results: none ]
 		style search-icon: base 23x23 220.220.220 
@@ -468,38 +478,74 @@ request-list-enhanced: func [
 		space 10x2
 		msg-text: text message msg-size center font-size 11
 		return 
-		tlist: text-list list-size
+		tlist: text-list list-size (font-info)
 			data data-block
+			on-create [
+				if multi-select [
+					repeat ndx (length? face/data) [
+						insert face/data/:ndx rejoin reduce [ empty-box " " ]
+					]					
+					tlist/extra/multi-selected: copy []
+				]
+			
+			]
 			on-change [
 				if face/selected <> 0 [
 					target-selector: get to-word face/extra/selector
 					target-selector/text: copy pick face/data face/selected 
+					if multi-select [
+						ndx: face/selected
+						either find tlist/extra/multi-selected ndx [
+							remove find tlist/extra/multi-selected ndx
+                			replace face/data/:ndx full-box empty-box
+						][
+			                append tlist/extra/multi-selected ndx
+			                replace face/data/:ndx empty-box full-box
+						]
+					]
 				]
 			]
 			on-dbl-click [
-				if tlist/selected <> 0[
-					ds1/actors/select-this-item/selected "tlist"
-					do-actor ds1 none 'enter
+				if tlist/selected <> 0 [
+					either multi-select [
+						results: tlist/extra/multi-selected
+						unview						
+					][
+						ds1/actors/select-this-item/selected "tlist"
+						do-actor ds1 none 'enter
+					]
 				]
 			]				
 			extra [ 
 				selector: "ds1"
 				last-selected: 0
+				multi-selected: []
 			]
 		return	
-		search-icon1: search-icon	
+		search-icon1: search-icon
 		space 0x0
-		ds1: request-list-picker picker-size focus with [ extra/data-source: "tlist" ]
+		ds1: request-list-picker picker-size focus (picker-state)
+			with [ extra/data-source: "tlist" ]
 			on-enter [
-				results: either face/text = "" [ none ][ face/text]
-				unview
+				either multi-select [
+					results: tlist/extra/multi-selected
+					unview					
+				][
+					results: either face/text = "" [ none ][ face/text]
+					unview
+				]
 			]
 		space 10x10
 		return 	
 		box spacer-size
 		button "OK" 35x23  on-click [
-			ds1/actors/select-this-item/selected "tlist"
-			do-actor ds1 none 'enter
+			either multi-select [
+				results: tlist/extra/multi-selected
+				unview 
+			][
+				ds1/actors/select-this-item/selected "tlist"
+				do-actor ds1 none 'enter
+			]
 		]
 		
 		button "Cancel" 50x23  on-click [
@@ -814,3 +860,259 @@ request-multiline-text: function [
     view/options/flags multiline-layout options-block flags-block
     return --multiline-result
 ]
+
+request-table-link-context: context [
+	request-table-link-layout: [
+		Title "Create a table link"
+		style label: text "Label Text:" 230.230.230 font-color 0.0.0 right middle
+		style vsp-underlay: panel gray 
+			extra [
+				vsp-viewport-panel: ""
+			] 
+			on-create [
+				set 'move-vertical-scroll-panel func [vertical-scroll-panel [object!] /wheel wheel-data] [
+					viewport-object: get to-word vertical-scroll-panel/extra/vsp-viewport-panel
+					max-percent: (1 - (viewport-object/size/y / vertical-scroll-panel/size/y))
+					scroller-object: get to-word vertical-scroll-panel/extra/vsp-scroller
+					either wheel [
+						scroller-object/data: max ((min max-percent scroller-object/data - (wheel-data / (max-percent * 11)))) 0
+					] [
+						scroller-object/data: max (min max-percent scroller-object/data) 0
+					]
+					vertical-scroll-panel/offset/y: to integer! negate vertical-scroll-panel/size/y * scroller-object/data
+				]
+				set 'modify-scroll-panel func [vertical-scroll-panel [object!] layout-block [block!]] [
+					vertical-scroll-panel/pane: layout/only layout-block
+					vertical-scroll-panel/size: select layout layout-block 'size
+					scroller-object: get to-word vertical-scroll-panel/extra/vsp-scroller
+					viewport-object: get to-word vertical-scroll-panel/extra/vsp-viewport-panel
+					scroller-object/selected: (viewport-object/size/y / vertical-scroll-panel/size/y)
+					scroller-object/data: 0.0
+					move-vertical-scroll-panel vertical-scroll-panel
+				]
+				vsp-viewport-panel-object: get to-word face/extra/vsp-viewport-panel
+				face/size: vsp-viewport-panel-object/size + 26x6
+			]
+		style vertical-scroll-panel: panel 
+			extra [
+				vsp-scroller: ""
+				vsp-viewport-panel: ""
+			]
+		style vsp-viewport-panel: panel 
+			extra [
+				vertical-scroll-panel: ""
+				vsp-scroller: ""
+			] 
+			on-wheel [
+				move-vertical-scroll-panel/wheel (get to-word face/extra/vertical-scroll-panel) event/picked
+			]
+		style vsp-scroller: scroller 16x16 
+			extra [
+				vertical-scroll-panel: ""
+				vsp-viewport-panel: ""
+			] 
+			on-change [
+				move-vertical-scroll-panel (get to-word face/extra/vertical-scroll-panel)
+			] 
+			on-create [
+				vsp-viewport-panel-object: get to-word face/extra/vsp-viewport-panel
+				face/size: to-pair reduce [16 vsp-viewport-panel-object/size/y]
+			] 
+			on-created [
+				vsp-viewport-panel-object: get to-word face/extra/vsp-viewport-panel
+				vertical-scroll-panel-object: get to-word face/extra/vertical-scroll-panel
+				face/selected: (vsp-viewport-panel-object/size/y / vertical-scroll-panel-object/size/y)
+			] 
+			on-wheel [
+				move-vertical-scroll-panel/wheel (get to-word face/extra/vertical-scroll-panel) event/picked
+			]
+		
+		gb1: group-box "Step #1" 462x54 [
+			space 2x2
+			label2: label "Table you are Linking to:"
+			drop-down-plain1: drop-down 200x23 data [] 
+				on-create [
+					face/data: get-table-filenames system/options/path
+					table-picked: none
+				]
+				on-change [
+					table-picked: pick face/data face/selected
+					table-data: load/as (to-file table-picked) 'redbin
+					col-names: table-data/options/col-names 
+					checklist-blk: copy [ ["Select" "Column Names"] ]
+					foreach [ nam num ] col-names [
+						if num > 1 [
+							append/only checklist-blk reduce [ num nam ]
+						]
+					]			
+					pe checklist-blk	
+					chklst: checklist/make/dump checklist-blk	
+					modify-scroll-panel vpanel-vsp-panel chklst/1	
+				]
+		]
+		space 8x8
+		return
+		gb2: group-box "Step #2" [
+			text "Pick the least number of columns that accurately  ^/describes the table you are linking to" font-size 12 400x45
+			return 
+			vpanel-vsp-underlay: vsp-underlay 
+				with [
+					extra/vsp-viewport-panel: "vpanel-vsp-viewport"
+				] 
+				[
+					origin 3x3
+					vpanel-vsp-viewport: vsp-viewport-panel 410x200 
+						with [
+							extra/vertical-scroll-panel: "vpanel-vsp-panel"
+							extra/vsp-scroller: "vpanel-vsp-scroller"
+						] 
+						[
+							vpanel-vsp-panel: vertical-scroll-panel []
+								with [
+									extra/vsp-scroller: "vpanel-vsp-scroller"
+									extra/vsp-viewport-panel: "vpanel-vsp-viewport"
+								]
+						]
+					space 4x2
+					vpanel-vsp-scroller: vsp-scroller 
+						with [
+							extra/vertical-scroll-panel: "vpanel-vsp-panel"
+							extra/vsp-viewport-panel: "vpanel-vsp-viewport"
+						]
+				]
+		]
+		return
+		
+		gb3: group-box "Step #3" 462x57 [
+			space 2x2
+			label1: label "Requester prompt when link is made:"
+			requester-prompt: field 230x23 hint "Select a person"
+		]
+		space 8x8
+		return 
+		
+		;button2: button "probe checklist/get-..." on-click [probe checklist/get-checked vpanel-vsp-panel]
+	    button "OK" focus 100x24 [
+	    	if not tp: table-picked [
+	    		print "Link table is missing. Please complete Step #1 and then proceed."
+	    		return 'done
+	    	]
+	    	if (cl: checklist/get-checked vpanel-vsp-panel) = [] [
+	    		print "Column selection is missing. Please complete Step #2 and then proceed."
+	    		return 'done
+	    	]
+	    	if not rp: requester-prompt/text [
+	    		print "Requester prompt missing. Please complete Step #3 and then proceed."
+	    		return 'done
+	    	]
+	    	
+	        results: reduce [ 
+	        	tp
+	        	rp 
+	        	cl
+	        ]
+	        unview
+	    ]
+	    button "CANCEL" 100x24 [
+	        results: none
+	        unview
+	    ]
+	    do [
+			get-table-filenames: function [
+				filepath [file!]
+			][
+				all-files: read filepath
+				redtbl-files: collect [
+					foreach f all-files [
+						f: to-string f
+						if (copy/part tail f -7) = ".redtbl" [
+							keep f
+						]
+					]
+				]
+				return redtbl-files
+			]
+			
+			checklist: context [
+				make: function [ 
+					{Returns a layout and size based on the id-block provided}
+					id-block [block!] {block in this format [ [ "Select" "Name" ] [ 1 "Joe" ] [ 2 "Jim" ] ... ] }
+					/dump {returns the layout block created}
+				][
+					layout/only 
+					styles: compose/deep [
+						style label: text 230.230.230 font-color 0.0.0 middle center
+						space 1x1
+						origin 4x4		
+					]
+					header: compose/deep [ label (id-block/1/1) 50x24 ]
+					foreach head-text (skip id-block/1 1) [
+						append header compose [ 
+							label (head-text ) 165x24
+						]	
+					]
+					body: copy []
+					foreach row (skip id-block 1 )[ ;-- skip header row
+						row-data: copy []	
+						append row-data compose/deep [
+							return 
+							space 0x0
+							box 17x24 white 
+							check 16x24 white center middle extra [ ( row/1 )]
+							box 17x24 white
+							space 1x1
+						]
+						foreach field-data (skip row 1)[ ;-- skip the id number
+							print ["field-data = " field-data ]
+							append row-data compose [
+								text (field-data) 165x24 255.255.255 center middle			
+							]
+						]
+						append body row-data 
+					]
+					lay: compose/deep [ 
+						(styles) 
+						(header)  
+						(body)
+					]
+					cols: ((length? id-block/1) - 1)
+					;        sides  select  columns        space between cols
+					full-width: 8 + 50 +   (cols * 165) + ( cols )
+					print [ "make full-width =" mold full-width]
+					return either dump [
+						reduce [ lay full-width ]
+					][
+						reduce [ layout/only lay full-width ]
+					]
+				]
+				
+				get-checked: function [
+					lay [object!] {VID Object containing checklist}
+				][
+				    results: copy []
+				    foreach-face lay [
+				        if all [ 
+				        	face/type = 'check 
+				        	face/data = #(true)
+				        ][
+				            append/only results face/extra/1
+				        ]
+				    ]
+				    results
+				]			
+			]	    	
+	    ]	
+	]
+	set 'request-table-link func [
+		{returns details to create a table link}
+		/offset	win-offset
+	][
+		results: copy []
+		view-options: either offset [ compose [ offset: (win-offset) ]	][ [] ]
+		view/flags/options request-table-link-layout
+			[ no-min no-max modal ] 	;-- flags
+			view-options
+		return results	
+	]
+]
+
