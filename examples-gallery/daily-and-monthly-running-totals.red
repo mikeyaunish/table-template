@@ -13,7 +13,7 @@ daily-and-monthly-running-totals-layout: [
 	style table-using-data-file: panel "panel1" 128.128.128
 	table-using-data-file1: table-using-data-file [
     origin 2x2 table2: table 365x505
-    data %/E/red/direct-code/experiments/table-template/examples-gallery/daily-and-monthly-running-totals.redtbl
+    data %./daily-and-monthly-running-totals.redtbl
 ]
 ]
 
