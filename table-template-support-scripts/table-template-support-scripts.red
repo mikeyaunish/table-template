@@ -30,9 +30,7 @@ get-absolute-offset: function [
 array-to-text-table: function [
 	array [block!] {block of blocks with last value being the index}
 ][
-	print [ "array-to-text-table array =" mold array]
 	longest-item: append/dup copy [] 0 (length? array/1)
-	print [ "array-to-text-table longest-item =" mold longest-item] 
 	foreach row array [
 		repeat item ((length? array/1) - 1) [
 			longest-item/:item: max longest-item/:item (length? row/:item)
@@ -102,8 +100,6 @@ new-get-widest-column: function [
 	column-block [block!]
 	/src-text {return the longest string instead of length value}
 ][
-	print [ "get-widest-column blk =" mold blk]
-	print [ "get-widest-column column-block =" mold column-block]
     either ((length? column-block) > 1) [ ; Get width of first field which in a block pair would be the label name
         widest-col: length? to-valid-string (pck: pick (first blk) column-block/1) 
         sec-col: column-block/2
@@ -126,9 +122,6 @@ old-get-widest-column: function [
 	blk [block!] 
 	column-block [block!]
 ][
-	print [ "get-widest-column #START get-widest-column V1" ]
-	;print [ "get-widest-column blk =" mold blk]
-	print [ "get-widest-column column-block =" mold column-block]
     either ((length? column-block) > 1) [ ; Get width of first field which in a block pair would be the label name
         widest-col: length? to-string (pck: pick (first blk) column-block/1) 
         sec-col: column-block/2

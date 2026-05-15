@@ -945,7 +945,6 @@ request-table-link-context: context [
 							append/only checklist-blk reduce [ num nam ]
 						]
 					]			
-					pe checklist-blk	
 					chklst: checklist/make/dump checklist-blk	
 					modify-scroll-panel vpanel-vsp-panel chklst/1	
 				]
@@ -1063,7 +1062,6 @@ request-table-link-context: context [
 							space 1x1
 						]
 						foreach field-data (skip row 1)[ ;-- skip the id number
-							print ["field-data = " field-data ]
 							append row-data compose [
 								text (field-data) 165x24 255.255.255 center middle			
 							]
@@ -1078,7 +1076,6 @@ request-table-link-context: context [
 					cols: ((length? id-block/1) - 1)
 					;        sides  select  columns        space between cols
 					full-width: 8 + 50 +   (cols * 165) + ( cols )
-					print [ "make full-width =" mold full-width]
 					return either dump [
 						reduce [ lay full-width ]
 					][

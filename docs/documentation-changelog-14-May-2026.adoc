@@ -1,0 +1,112 @@
+= Table template changelog: v0.120 → v0.121
+:revdate: 14 May 2026
+:toc: left
+:toclevels: 2
+
+This document summarizes behavioral and API changes between `table-template-v120.red` and `table-template-v121.red`.
+
+== Release metadata
+
+* Template version bumped from `0.120` to `0.121` (header block and `tbl` config).
+* Release date in the file header updated from 15 Apr 2026 to 14 May 2026.
+
+== User interface
+
+=== Context menu
+
+* *Show Details* and *Print Code Overlays* are grouped under a new *Information* submenu.
+* *Refresh View* remains a top-level action.
+
+=== Multiline editor (F5)
+
+* Default dialog size for multiline text entry increased from 800×200 to 900×300 pixels.
+
+== New VID overlay: `data-request-date`
+
+* Adds a date column pattern with a small control that opens `request-date` and writes the result back through `set-data/index/refresh`.
+* Includes VID renderer (`data-request-date`), draw styling (`vid-draw/data-request-date`), library metadata (`vid-lib/data-request-date` with `datatype: "date"`), overlay configuration (`overlay-config/data-request-date`), and `setup-data-request-date` (mirrors the pattern used for checkbox logic).
+* F4 restore path rebinds overlay layout similarly to other repeating VID types.
+
+== Code and VID overlay APIs
+
+=== `do-code-overlay`
+
+* Arity reduced: callers now use `do-code-overlay face data-x data-y` (the previous `cell` argument was removed).
+
+=== Row predicates
+
+* `first-data-row?` and `last-data-row?` are replaced by:
+** `first-row?` — true for the first *data* row after the header, using `face/frozen/y` with `row-index`.
+** `last-row?` — true for the last row in `row-index`.
+** `mid-row?` — true when the row is neither first nor last data row.
+
+=== Data read/write helpers
+
+* New `set-cells` in overlay contexts (code and VID): preferred way to modify table data; `set-table-data` is retained but marked *deprecated* in favor of `set-cells`.
+* `get-cell` in overlays now reads via `get-data` on `table-obj` instead of `user-get-cell` where applicable.
+* `get-cells` documentation expanded; `/rel` is documented as mutually exclusive with `/next-row` and `/prev-row`.
+* `get-table-data` is reintroduced as a thin wrapper over `table-obj/actors/get-data` (with `/row`).
+* `set-cell` / `set-cells` / related compose targets now route through `table-obj` for `user-set-cell` and `actors/set-data` consistently.
+
+=== VID overlay context setup
+
+* Function `set-overlay-context` is renamed to `set-vid-overlay-context`; all call sites (for example F4 VID edit flow) use the new name.
+
+== Core table actors and data layer
+
+=== `set-data`
+
+* Docstring clarified: by default coordinates are visible/drawn positions; `/index` uses data indices, with string column ids resolved accordingly.
+* Row resolution uses new helper `get-data-row` instead of inline `find` on `row-index`.
+* When not using `/index`, column ids are normalized with `get-data-col`.
+* Refresh calls `refresh-view` directly on the face.
+
+=== `get-data`
+
+* Reworked relative, next-row, and prev-row handling with explicit skip logic and bounds checks on row and column indices.
+* Out-of-range or invalid combinations produce detailed `status-msg` diagnostics (including which refinements were used) instead of minimal one-line errors.
+* `/row` return path uses `row-id` as a direct index into `table-data` after resolution.
+* Internal `/rel` handling tracks an `orig-rel` flag so error reporting distinguishes refinement usage.
+
+=== `user-set-cell` / draw queue (coloring and values)
+
+* Draw row computation uses `pick face/row-index row-id` before offsetting by scroll position.
+* Cell access uses `attempt` when reading `face/draw` to avoid hard failures.
+* Color queue entries use a computed `real-draw-row` and `draw-col` for the queue tuple.
+* Virtual column updates enqueue `(negate col-id)` style references and call `set-data/.../index` for data cells.
+
+=== Virtual column index helper
+
+* Column lookup for virtual columns returns `first fnd` from `find` instead of `negate index? fnd`.
+
+=== `user-get-cell` error bookkeeping
+
+* Error block uses the resolved column `name` in the reduced error value for comparison with `user-get-cell-error`.
+
+== Row operations and frozen rows
+
+* Moving a row up or down is blocked if either the source or target row index is in `frozen-rows`, with a clear status message; user must unfreeze first.
+* After a successful row move or `set-column-names`, the view is refreshed explicitly before `fill`.
+
+== Editing and type conversion
+
+* When applying datatype conversion in VID-driven editing, cells on *frozen* rows skip `cast-to-datatype` and keep the raw text (`tx`), avoiding unwanted coercion on header-like rows.
+
+== `data-table-link` overlay
+
+* Writes from the link dialog use `set-data/index/refresh` so indices align with stored addresses.
+* `vid-lib` entry declares `datatype: "integer"`.
+* Pre-built sample column text for data-table-link is set when using `/pre-built` setup.
+
+== Code overlay iteration
+
+* Loops that run `do-code-overlay` over data rows now use an explicit counter starting at `2` and `loop ((length? face/row-index) - 1)` instead of `foreach` over `skip face/row-index 1` (equivalent coverage, clearer intent).
+
+== File load safety (Redbin)
+
+* Loading companion `.redbin` data is guarded with `all [ face/data file? face/data exists? redbin-filename ... ]` (credited in source as a gurzgri patch) so missing or non-file `face/data` does not error.
+
+== Minor / cosmetic
+
+* `print-code-overlays` indentation normalized.
+* Stray comment and blank lines removed in a few locations.

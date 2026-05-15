@@ -1,8 +1,8 @@
 :experimental:
 = Table Template User Documentation
 :author: @toomasv, @mikeyaunish
-:version: 0.117
-:revdate: 20-Feb-2026
+:version: 0.121
+:revdate: 14-May-2026
 :toc: left
 :toclevels: 3
 :sectnums:
@@ -30,8 +30,8 @@ The `table-template.red` file provides a complete table widget implementation fo
 * Context menus
 
 === Version Information
-* **Version:** 0.117
-* **Date:** 20-Feb-2026
+* **Version:** 0.121
+* **Date:** 14-May-2026
 * **Repository:** https://github.com/mikeyaunish/table-template[GitHub]
 
 === Dependencies
@@ -431,12 +431,17 @@ Open the file /examples-gallery/append-data-to-table.red to see the full code.
 
 Code overlays are executed in a left to right, top to bottom order. Currently there is no dependency checking, so if a cell depends on the value of another cell, it is best to pull values from a cell that is to the left of the current cell. In the future, dependency checking and circular reference checking will be added to the code overlay engine.
 
+When driving overlays from your own Red code, `do-code-overlay` takes `face`, `data-x`, and `data-y` only (a former `cell` argument was removed).
+
 === Special functions and variables available in the Code and VID Overlay context
 
 **Note:** The use of `this-cell` variable has been deprecated. Use the dedicated getter and setter functions instead (see below).
 
+**Note:** Prefer `get-cells` for reading arbitrary cells by column and row in overlays. `get-table-data` remains available as a thin wrapper over the table `get-data` actor (including `/row`), for compatibility with older examples.
+**Note:** Prefer `set-cells` for writing data cells from overlays. `set-table-data` is retained for compatibility but is deprecated in favor of `set-cells`.
+
 ==== Overview of functions
-image::images/table-user-functions.png[]
+image::images/table-user-function-v2.png[]
 
 All Red code in any Overlay has access to the following special functions and variables:
 
@@ -478,10 +483,32 @@ ARGUMENTS:
 [source,red]
 ----
 USAGE:
+     GET-CELLS col-id row-id
+
+DESCRIPTION: 
+     Returns the table data at the specified column and row. Only available in the Code and VID Overlay context. Will not work with Virtual Columns. 
+     GET-CELLS is a function! value.
+
+ARGUMENTS:
+     col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
+     row-id       [integer!] {The row number that displays visually in the table.}
+
+REFINEMENTS:
+     /row         => returns entire row of data.
+     /rel         => Returns cell data using a relative position. Exclusive of /next-row /prev-row.
+        rel-col      [integer!] 
+        rel-row      [integer!] 
+     /next-row    => returns the next row of data relative to row-id.
+     /prev-row    => returns the previous row of data relative to row-id.
+----
+
+[source,red]
+----
+USAGE:
      GET-TABLE-DATA col-id row-id
 
 DESCRIPTION: 
-     Returns the table data at the col and row given. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. 
+     Returns the table data at the col and row given. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. Implemented as a thin wrapper over `table-obj/actors/get-data` (same refinements as `get-cells` where applicable).
      GET-TABLE-DATA is a function! value.
 
 ARGUMENTS:
@@ -494,7 +521,7 @@ REFINEMENTS:
 
 [source,red]
 ----
-     USAGE:
+USAGE:
      GET-COL-HEADER col-id
 
 DESCRIPTION: 
@@ -505,10 +532,43 @@ ARGUMENTS:
      col-id       [integer!] 
 ----
 
+==== Row predicate functions
+
+[source,red]
+----
+USAGE:
+     FIRST-ROW? 
+
+DESCRIPTION: 
+     Returns TRUE if the current row is the FIRST data row past the header row. Only available and useful in the Code and VID Overlay context. 
+     FIRST-ROW? is a function! value.
+----
+
+[source,red]
+----
+USAGE:
+     LAST-ROW? 
+
+DESCRIPTION: 
+     Returns TRUE if the current row is the LAST data row. Only available and useful in the Code and VID Overlay context. 
+     LAST-ROW? is a function! value.
+----
+
+[source,red]
+----
+USAGE:
+     MID-ROW? 
+
+DESCRIPTION: 
+     Returns TRUE if the current row is NOT a first or last data row. Only available and useful in the Code and VID Overlay context. 
+     MID-ROW? is a function! value.
+----
+
 ==== Setter Functions
 
 [source,red]
 ----
+USAGE:
      SET-THIS-CELL val
 
 DESCRIPTION: 
@@ -531,6 +591,28 @@ DESCRIPTION:
 ARGUMENTS:
      col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
      val          [any-type!] 
+
+REFINEMENTS:
+     /refresh     => refresh the view after the cell is modified.
+----
+
+[source,red]
+----
+USAGE:
+     SET-CELLS col-id row-id val
+
+DESCRIPTION: 
+     Modify the table data. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. 
+     SET-CELLS is a function! value.
+
+ARGUMENTS:
+     col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
+     row-id       [integer!] 
+     val          [any-type!] {The data for the single cell or a block if setting an entire row.}
+
+REFINEMENTS:
+     /row         => Will modify an entire row, datatypes must match row.
+     /refresh     => refresh the view after data modified.
 ----
 
 [source,red]
@@ -539,7 +621,7 @@ USAGE:
      SET-TABLE-DATA col-id row-id val
 
 DESCRIPTION: 
-     Modify the table data. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. 
+     Modify the table data. ONLY available in the Code and VID Overlay context. Operates ONLY on Data cells. *Deprecated:* prefer `set-cells` for new overlay code; signature and refinements match `set-cells`.
      SET-TABLE-DATA is a function! value.
 
 ARGUMENTS:
@@ -738,16 +820,21 @@ USAGE:
      <table-name>/ACTORS/GET-DATA face col-id row-id
 
 DESCRIPTION: 
-     Returns table data. 
+     Returns the specific data from a table. 
      <table-name>/ACTORS/GET-DATA is a function! value.
 
 ARGUMENTS:
-     face         [object!] 
-     col-id       [integer! string!] {A string! col-id will attempt to match a currently configured column name.}
-     row-id       [integer!] 
+     face         [object!] "table object."
+     col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
+     row-id       [integer!] {The row number that displays visually in the table.}
 
 REFINEMENTS:
      /row         => returns entire row of data.
+     /rel         => Returns cell data using a relative position. Exclusive of /next-row /prev-row.
+        rel-col      [integer!] 
+        rel-row      [integer!] 
+     /next-row    => returns the next rows data relative to row-id.
+     /prev-row    => returns the previous rows data relative to row-id.
 
 Example Usage:
 probe table1/actors/get-data table1 2 3  ;-- get the cell value of column 2 and row 3
@@ -763,18 +850,19 @@ USAGE:
      <table-name>/ACTORS/SET-DATA face col-id row-id val
 
 DESCRIPTION: 
-     Sets table data and refreshes table display. 
+     sets table data and refreshes table display. By default uses visible/drawn row and column NOT data index numbers. 
      <table-name>/ACTORS/SET-DATA is a function! value.
 
 ARGUMENTS:
      face         [object!] 
      col-id       [integer! string!] {A col-id of string! will attempt to match a currently configured column name.}
-     row-id       [integer!] 
+     row-id       [integer!] {Visual (drawn) row number by default; use `/index` for data row indices.}
      val          [any-type!] 
 
 REFINEMENTS:
      /row         => 'val block contains full row of pre-formatted data.
-     /refresh     => refresh view after data has been modified.     
+     /refresh     => refresh view after data has been modified.
+     /index       => col-id and row-id are the data index position. If col-id is a string! then it resolves accordingly.
 
 Example Usage:
 table1/actors/set-data table1 2 3 "New Value"
@@ -897,6 +985,7 @@ table1/actors/refresh-view table1
 
 NOTE: The following functions will also refresh the table display when the /refresh refinement is used.
 
+* `set-cells` 
 * `set-table-data` 
 * `set-data` 
 * `set-cell`
@@ -995,7 +1084,31 @@ The following table shows where the various functions are available and applicab
 | ✓ true
 | ✓ true
 
+| get-cells
+| ✓ true
+| ✗ false
+| ✓ true
+| ✗ false
+
 | get-table-data
+| ✓ true
+| ✓ true
+| ✓ true
+| ✓ true
+
+| first-row?
+| ✓ true
+| ✓ true
+| ✓ true
+| ✓ true
+
+| last-row?
+| ✓ true
+| ✓ true
+| ✓ true
+| ✓ true
+
+| mid-row?
 | ✓ true
 | ✓ true
 | ✓ true
@@ -1026,6 +1139,12 @@ The following table shows where the various functions are available and applicab
 | ✗ false
 | ✗ false
 
+| set-cells
+| ✓ true
+| ✓ true
+| ✓ true
+| ✓ true
+
 | set-table-data
 | ✓ true
 | ✓ true
@@ -1045,6 +1164,8 @@ The following table shows where the various functions are available and applicab
 * ✗ = Not Available / Not Valid (false)
 
 NOTE:  The `get-this-cell` function only works with Data columns, it will NOT work with Virtual columns.
+
+NOTE:  `set-table-data` is deprecated in overlay code; prefer `set-cells` for new work.
 
 
 === VID Object Context
@@ -1103,6 +1224,8 @@ The table provides a comprehensive context menu system accessible via right-clic
 * **By ...** - Move row by specified number of positions
 * **To ...** - Move row to specified position
 
+NOTE: Moving a row up or down is blocked when either the source or target row index is in `frozen-rows`. Unfreeze the affected rows first; the status line reports when a move is blocked.
+
 ==== Other
 
 * **Default height** - Reset row to default height
@@ -1139,7 +1262,7 @@ The table provides a comprehensive context menu system accessible via right-clic
 
 ==== Set Column Names
 
-Sets static names for columns (requires table to be loaded from a file, not just created from a block). These names are used to identify the columns in the table and are not affected by sorting, filtering or what headings are defined in the table data. These names are used by the `get-cell` , `set-cell`, `get-table-data` and `set-table-data` functions to get and set the definitve value of a cell. This allows the table to be used like a database with named columns.
+Sets static names for columns (requires table to be loaded from a file, not just created from a block). These names are used to identify the columns in the table and are not affected by sorting, filtering or what headings are defined in the table data. These names are used by the `get-cell`, `set-cell`, `get-cells`, `set-cells`, `get-table-data`, and `set-table-data` functions to get and set the definitive value of a cell. This allows the table to be used like a database with named columns.
 
 ==== Sort
 
@@ -1185,7 +1308,10 @@ Sets static names for columns (requires table to be loaded from a file, not just
 * **Clear color** - Clear all cell colors
 * **Select named range** - Select a named range
 * **Forget names** - Remove named ranges
-* **Show Details** - Show table details
+* **Information**
+  ** **Show Details** - Show table details
+  ** **Print Code Overlays** - Print overlay source to the console for debugging
+* **Refresh View** - Rebuild the display from current data and overlays
 
 === Selection Menu
 
@@ -1225,7 +1351,9 @@ To set a column to a specific data type, right-click on the column header and se
 
 `Column > Type > [desired type]`
 
-When a column type is set, all data in that column is converted to the specified type. Any cells containing a data type that doesn't match are cleared out. If a row is frozen, it will remain unmodified.
+When a column type is set, all data in that column is converted to the specified type. Any cells containing a data type that doesn't match are cleared out. If a row is frozen, it will remain unmodified during that conversion.
+
+When datatype conversion runs during VID-driven cell editing, cells on frozen rows skip coercion and keep the raw edit text (`tx`), so header-like frozen rows are not forced into the column type.
 
 == Column Types
 
@@ -1259,6 +1387,9 @@ Pre-built VID overlays include:
     - invalid = -1
 
 This overlay is only used on data columns, not virtual columns. For more information see <<_data_checkbox_for_logic>>.
+
+* `data-request-date` - Date column with a small control that opens `request-date` and writes the chosen value back through `set-data/index/refresh`. Data columns only. See <<_data_request_date>>.
+* `data-table-link` - Opens a link dialog to pick or edit a related value; writes go through `set-data/index/refresh` so row/column indices stay aligned with stored addresses. The `vid-lib` entry uses `datatype: "integer"`. Optional `/pre-built` setup supplies sample column text. Data columns only.
 
 * `cell-checkbox-for-row-selection` - Checkbox for row selection (used on virtual columns) Allows selection of multiplerows in a table and some sort of user defined action can be taken on those selected rows. 
 This overlay is only used on virtual columns, not data columns. For more information see <<_cell_checkbox_for_row_selection>>.
@@ -1442,6 +1573,11 @@ Used to display a checkbox for data that is of type logic! (true/false). This ov
 
 **Note:** Unlike `data-drop-list` and `cell-checkbox-for-row-selection`, `data-checkbox-for-logic` does not have a custom context menu. The checkbox can be toggled by clicking on it or using the F4 key.
 
+[#_data_request_date]
+==== data-request-date
+
+Repeating VID overlay for `date!` columns. Each cell shows the current date value and a control that runs `request-date`; the result is applied with `set-data/index/refresh` so data coordinates stay consistent after scroll or sort. Styling follows the same pattern as other repeating `data-` overlays (`vid-draw`, `vid-lib` with `datatype: "date"`, `overlay-config`, `setup-data-request-date`). F4 restore rebinds overlay layout like other repeating VID types.
+
 == Sorting
 
 === Basic Sorting
@@ -1566,6 +1702,8 @@ Cell editing is activated with:
 * Right-click on the cell and select `Cell > Multi-line Edit` from the menu
 * Select the cell and press `F2`
 * Select the cell and press `Shift+F2` for multi-line editing
+
+The multi-line text editor (also opened from the cell menu) uses a default dialog size of 900×300 pixels.
 
 Editing is committed with Enter.
 
@@ -2018,7 +2156,7 @@ Functions are provided to convert between these systems:
 * `get-draw-address` - Get draw coordinates from event
 * `get-logic-address` - Convert draw to data coordinates
 
-=== Frozen Rows and Columns
+`actors/set-data` uses visual (drawn) row and column positions by default. Use `/index` when `col-id` and `row-id` are data indices (string column names are still resolved to the correct data column).
 
 Frozen rows and columns remain visible when scrolling. They are typically used for headers.
 
@@ -2062,6 +2200,7 @@ Frozen rows and columns remain visible when scrolling. They are typically used f
 
 * `set-overlay-vid face event` - Set VID overlay
 * `set-overlay-code face event` - Set code overlay
+* `set-vid-overlay-context` - Bind VID overlay edit context (F4 / overlay editor); renamed from `set-overlay-context`
 * `edit-overlay face event` - Edit overlay
 * `remove-overlay face event` - Remove overlay
 * `clear-overlay face col-num` - Clear overlay
@@ -2124,7 +2263,7 @@ Red [
 ]
 ----
 
-**Note:** When saving as a `.red` file, a companion `.redbin` file is also created with the same filename. The `.redbin` file contains all configuration, overlay and customization data that is contained within the table. The original `.red` format only saved the data and some small number of configuration options. This dual-file approach is provided as a transition format to allow existing 'old' `.red` files to still be loaded and saved while preserving all table customizations.
+**Note:** When saving as a `.red` file, a companion `.redbin` file is also created with the same filename. The `.redbin` file contains all configuration, overlay and customization data that is contained within the table. The original `.red` format only saved the data and some small number of configuration options. This dual-file approach is provided as a transition format to allow existing 'old' `.red` files to still be loaded and saved while preserving all table customizations. Loading that companion `.redbin` data is skipped safely when `face/data` is missing, not a file, or the expected redbin path does not exist, so incomplete paths do not error at load time.
 
 ==== .redtbl Format
 
