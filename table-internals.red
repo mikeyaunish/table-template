@@ -29,7 +29,7 @@ do setup: [
 
 ;Direct Code VID Code source marker - DO NOT MODIFY THIS LINE OR THE NEXT LINE!
 table-internals-layout: [
-	Title "Table Template Internals"
+	Title "V2 Table Template Internals"
 	style button-plain: button
 	style group-box-plain: group-box "group-box1"
 	space 2x2
@@ -80,9 +80,9 @@ table-internals-layout: [
 				]
 		]
 	return
-	group-box-plain5: group-box-plain "Table Configuration" 
+	group-box-plain5: group-box-plain "Table Details" 
 		[
-			button-plain3: button-plain "table-state" 239x26
+			button-plain3: button-plain "Table State" 239x26
 			 
 				on-click [
 					print [
@@ -91,9 +91,9 @@ table-internals-layout: [
 					]
 				]
 			return
-			button-plain4: button-plain "table-details" 239x26 
+			button-plain4: button-plain "Configuration" 239x26 
 				on-click [
-					table-details table-obj
+					print-table-config table-obj
 				]
 		]
 	return

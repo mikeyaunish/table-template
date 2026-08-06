@@ -3,8 +3,8 @@ Red [
 	author: {@toomasv  custom fork by: @mikeyaunish}
 	file: %table-template.red
 	git-url: https://github.com/mikeyaunish/table-template
-	version: 0.121
-	date: 14-May-2026
+	version: 0.122
+	date: 5-JUN-2026
 ]
 #include %table-template-support-scripts/style.red
 #include %table-template-support-scripts/re.red
@@ -19,7 +19,7 @@ tbl: [
 	size: 317x217
 	color: silver
 	flags: [scrollable all-over]
-	version: 0.121
+	version: 0.122
 	identifier: "table-template"
 	scroller: 			make map! 1
 	index: 				make map! 2
@@ -134,7 +134,9 @@ tbl: [
 	col-align: make map! 10
 	user-get-cell-error: copy []
 	cell-queue: make block! 50
-
+	changed?: #(false)
+	name: copy ""
+	
 	menu: [
 		"Cell" [
 			"Freeze"   			freeze-cell
@@ -275,8 +277,10 @@ tbl: [
 			"Forget names" 		forget-names
 			"Refresh View"		refresh-view
 			"Information" [
-				"Show Details" 		show-table-details
+				"Print Table Data"    print-data
+				"Table Configuration" print-table-config
 				"Print Code Overlays" print-code-overlays
+				
 			]
 		]
 		"Selection" [
@@ -284,7 +288,10 @@ tbl: [
 			"Cut"       cut-selected
 			"Paste"     paste-selected
 			;"Transpose" transpose
-			"Set Color" color-selected
+			"Color" [
+				"Set Color" color-selected
+				"Remove Color" remove-color-selected
+			]
 			"Set Name"  name-selected
 		]
 	]
@@ -334,7 +341,6 @@ tbl: [
 				false
 			]
 		]
-		
 
 		in-view: function [ 
 			face [object!] 
@@ -343,7 +349,6 @@ tbl: [
 			start-row: face/current/y + 1
 			return as-pair start-row ( start-row + face/usable-grid/y - 1 - (length? face/frozen-rows ))
 		]		
-
 		
 		to-valid-key: function [ 
 			key 
@@ -883,6 +888,7 @@ tbl: [
 			clear face/defaults
 			clear face/col-align
 			clear face/vid-targets 
+			clear face/colors
 		]
 
 		init-indices: func [face [object!] /only /local i][
@@ -915,8 +921,6 @@ tbl: [
 			if face/auto-row? [
 				face/indices/y/0: copy face/default-col-index                  ;Default is for first (auto-row) row
 			]
-
-
 			either only [
 				clear face/row-index
 				clear face/col-index
@@ -977,6 +981,7 @@ tbl: [
 		]
 
 		init: func [
+			{V2}
 			face [object!]
 			/with block-data [block!]
 		][
@@ -1193,7 +1198,10 @@ tbl: [
 				get-cell get-cells get-this-cell get-this-row get-col-header
 				get-table-data set-table-data  
 				first-row? last-row? mid-row? 
+				total-this-col 
 		][
+			
+			if is-filtered? face [ exit ]
 			if find face/frozen-rows data-y [ exit ] ;-- ignore frozen rows
 			col-num: data-x
 			row-num: data-y
@@ -1297,6 +1305,20 @@ tbl: [
 				/extern face row-num
 			] [
 				return either (last face/row-index) = row-num [ true ][ false ]
+			]
+			
+			total-this-col: function [
+				/extern face row-num col-num
+			][
+				if last-row? [
+					middle: copy/part at face/row-index 2 (length? face/row-index ) - 2
+					total: 0 
+					foreach row-ndx middle [
+						total: total + face/table-data/:row-ndx/:col-num 
+					]
+					set-this-cell total
+					set-cell-color yellow
+				]				
 			]
 		
 			mid-row?: function [
@@ -1530,7 +1552,7 @@ tbl: [
 				either face/col-names = [][
 					if (face/user-get-cell-error =  new-err: reduce [ col-id ]) [ exit ]
 					face/user-get-cell-error: new-err 
-					request-message rejoin [ {The "} caller-id {" function needs column names to be defined.^/Please use the Menu: "Column/Set Column Names" to define the columns. Once this is done you can properly use the "} caller-id {" function.}]
+					request-message rejoin [ {The "} caller-id {" function needs column names to be defined.^/Please use the Menu: "Column/Set Column Names" to define the columns. Once this is done you can use the "} caller-id {" function.}]
 					return none
 				][
 					if not col-id: system/words/select face/col-names col-id [
@@ -1556,7 +1578,7 @@ tbl: [
 			either face/col-names = [][
 				if (face/user-get-cell-error =  new-err: reduce [ name ]) [ exit ]
 				face/user-get-cell-error: new-err 
-				request-message rejoin [ {The "} caller-id {" function needs column names to be defined.^/Please use the Menu: "Column/Set Column Names" to define the columns. Once this is done you can properly use the "} caller-id {" function.}]
+				request-message rejoin [ {The "} caller-id {" function needs column names to be defined.^/Please use the Menu: "Column/Set Column Names" to define the columns. Once this is done you can use the "} caller-id {" function.}]
 				return none
 			][
 				if not col-num: system/words/select face/col-names name [
@@ -1591,8 +1613,12 @@ tbl: [
 			val [block!] {block of values that matches the row of data}
 			/refresh {refresh view after data has been modified}
 		][
+			if is-filtered? face [
+				status-msg/alert "The Current table is filtered. Please clear the filter before adding a row of data."
+				exit
+			]
 			append-row face
-			set-data/row/:refresh face 0 (last face/row-index) val
+			set-data/row/:refresh/index face 0 (last face/row-index) val
 		]
 		
 		insert-data-row: function [ 
@@ -1620,6 +1646,7 @@ tbl: [
 				row-ndx: row-id
 			][
 				row-ndx: get-data-row face row-id 
+				
 			]
 			either row [
 				face/table-data/:row-ndx: val
@@ -1641,6 +1668,7 @@ tbl: [
 				face/table-data/:row-ndx/:col-id: cast-to-datatype col-type val
 			]
 			if refresh [ refresh-view face ]
+			trigger-on-changed face
 		]
 		
 		load-table-data: function [ table-filename [file!] ][
@@ -1653,8 +1681,9 @@ tbl: [
 			table-id [object! string!]
 			col-list [block!] {Series of column numbers to include in table}
 			/size req-size
+			/offset offset-val
+			/full {return full data and index}
 		][ 
-			
 			req-blk: copy []
 			if string? table-id [
 				table-name: copy table-id			
@@ -1670,11 +1699,18 @@ tbl: [
 				append/only req-blk ( copy row-collect)	
 			]
 			rq-size: either size [ req-size ] [ 300x200 ]
-			set [ req-blk select-blk ] array-to-text-table req-blk 
-			if req-res: request-list-enhanced/fixed-font/size message req-blk rq-size [
-				req-res: last find-in-array-at select-blk 1 req-res 
+			set [ req-blk select-blk ] array-to-text-table req-blk
+			either offset [
+				req-res: request-list-enhanced/fixed-font/size/offset message req-blk rq-size offset-val
+			][
+				req-res: request-list-enhanced/fixed-font/size message req-blk rq-size
+			] 
+			if req-res [
+				req-res: find-in-array-at select-blk 1 req-res 
+				if not full [ req-res: last req-res ] 
+				return req-res
 			]
-			return req-res
+			return none
 		]
 		
 		
@@ -1839,7 +1875,7 @@ tbl: [
 				either face/col-names = [][
 					if (face/user-get-cell-error =  new-err: reduce [ col ]) [ exit ]
 					face/user-get-cell-error: new-err 
-					request-message {The "get-cell" function needs column names to be defined.^/Please use the Menu: "Table/Set Column Names" to define the columns. Once this is done you can properly use the "get-cell" function.}
+					request-message {The "get-cell" function needs column names to be defined.^/Please use the Menu: "Column/Set Column Names" to define the columns. Once this is done you can use the "get-cell" function.}
 					exit
 				][
 					if not col: system/words/select face/col-names col [
@@ -1918,6 +1954,14 @@ tbl: [
 					]
 				]
 			]
+			trigger-on-changed face
+		]
+		
+		find-tab-index: function [ data	needle][
+			repeat i (length? data) [
+				if ((skip data/:i 2) = needle) [ return i ]
+			]
+			return none
 		]
 			
 		set-code-lib: function [ face [object!]][
@@ -2000,22 +2044,27 @@ tbl: [
 						on-created [
 							face/extra/data-addr: data-addr
 							face/extra/draw-addr: draw-addr
-							
-							face/menu: compose/deep [
-						    	"Goto Linked Table"  goto-linked-table
-								"Edit Link" 		 edit-table-link		    
-							]					    
+							if value? 'table-stack-tab-panel [
+								face/menu: compose/deep [
+							    	"Goto Linked Table"  goto-linked-table
+									"Goto Linked Row"	 goto-linked-row
+								]					    
+							]
 							set 'data-table-link-menu function [ face event ][
 								switch event/picked [
 									goto-linked-table [ 
 										link-detail: load table-obj/vid-overlays/(face/extra/data-addr/x)/code/1 
-										if value? 'table-tabs [
-											if fnd: find table-tabs/data link-detail/data/1 [
-												table-tabs/actors/select-table table-tabs first fnd
+										either value? 'table-stack-tab-panel [
+											if fnd: face/parent/actors/find-tab-index table-stack-tab-panel/data link-detail/data/1 [
+												table-stack-tab-panel/selected: fnd
 											]
+										][
+											face/parent/actors/status-msg "This feature is only available from within table-stack"
 										]
 									]
-									edit-table-link [
+									goto-linked-row [
+										link-detail: load table-obj/vid-overlays/(face/extra/data-addr/x)/code/1
+										dta: face/parent/table-data/(face/extra/data-addr/y)/(face/extra/data-addr/x)
 									]
 								]
 							]		
@@ -2348,16 +2397,17 @@ tbl: [
 				cell/11/1: 'text
 				cell/11/2: p0 + 7x4
 				link-data-blk: load face/vid-overlays/:data-x/code/1
+				
 				link-data: copy ""
 				if all [
-					table-obj/table-data/:data-y/:data-x 
-					table-obj/table-data/:data-y/:data-x > 0 
+					face/table-data/:data-y/:data-x 
+					face/table-data/:data-y/:data-x > 0 
 				][
-					if df: face/actors/get-data-from link-data-blk/data/1 table-obj/table-data/:data-y/:data-x [
+					if df: face/actors/get-data-from link-data-blk/data/1 face/table-data/:data-y/:data-x [
 						link-data: collect [foreach i link-data-blk/data/3 [ keep pick df i ]]	
 					]					
 				]
-				cell/11/3: (rejoin [ "(" form face/table-data/:data-y/:data-x ") " form link-data ] )				
+				cell/11/3: (rejoin [ form link-data " (#" form face/table-data/:data-y/:data-x ")" ] )				
 
 				remove/part (skip cell 11) length? cell ;-- clean out rest of cell drawing
 				
@@ -2663,7 +2713,6 @@ tbl: [
 					(reduce ['text p0 + 4x2 text])
 				]
 				set-cell-align face cell data-x p0 p1
-				
 				if any [ face/vid-overlays/:data-x face/code-overlays/:data-x ] [
 					append cell compose/only [
 						pen 221.221.0
@@ -2719,6 +2768,7 @@ tbl: [
 				
 				if not vid-overlay? [
 					set-cell-align face cell data-x p0 p1 
+					if clr: face/colors/(as-pair data-x data-y) [ cell/4: clr ]
 				]
 				insert/only at row draw-x cell
 			]
@@ -2944,6 +2994,7 @@ tbl: [
 			recycle/on
 			face/draw: face/draw
 			auto-save face
+			trigger-on-changed face
 		]
 
 		do-overlays: function [face[object!]][
@@ -3081,6 +3132,10 @@ tbl: [
 			cell: get-draw-address face event                     ;Draw-cell address
 			show-editor/:edit-mode face cell
 		]
+		
+		is-filtered?: function [ face [object!]][
+			face/filtered <> #[ y: [] x: [] ]
+		]
 
 		is-read-only?: function [ 
 			face [object!] 
@@ -3159,8 +3214,15 @@ tbl: [
 			]
 		]
 
-		status-msg: function [ msg ][
-		    print msg
+		status-msg: function [ 
+			msg 
+			/alert
+		][
+			either alert [
+				request-message msg 
+			][
+			    print msg	
+			]
 		]	
 		
 		hide-editor: function [face [object!]] [
@@ -3839,7 +3901,7 @@ tbl: [
 		set-col-type: function [face [object!] event [event! integer!] /only typ [word!]][
 			col: either event? event [get-col-number face event][event]
 			if col < 0 [
-				status-msg "Virtual Columns can NOT have their data Type set."
+				status-msg "Virtual Columns can NOT have their datatype set."
 				exit 
 			]
 			if not all [not only col = 0][
@@ -3904,12 +3966,14 @@ tbl: [
 		hide-row: function [face [object!] event [event! integer!]][
 			row: either integer? event [event][get-row-number face event]
 			face/sizes/y/:row: 0
+			face/changed?: #(false)
 			fill face
 			show-marks face
 		]
 
 		hide-rows: function [face [object!] rows [block!]][
 			foreach row rows [face/sizes/y/:row: 0]
+			face/changed?: #(false)
 			fill face
 			show-marks face
 		]
@@ -3917,6 +3981,7 @@ tbl: [
 		hide-col: function [face [object!] event [event! integer!]][
 			col: either integer? event [event][get-col-number face event]
 			face/sizes/x/:col: 0
+			face/changed?: #(false)
 			fill face
 			show-marks face
 		]
@@ -3928,6 +3993,7 @@ tbl: [
 		hide-columns: function [face [object!] cols [block!]][
 			foreach col cols [face/sizes/x/:col: 0]
 			clear-vid-decor face
+			face/changed?: #(false)
 			fill face
 			show-marks face
 		]
@@ -3937,6 +4003,7 @@ tbl: [
 				if zero? val [remove/key face/sizes/:dim key]
 			]
 			unless only [
+				face/changed?: #(false)
 				fill face
 				show-marks face
 			]
@@ -3944,6 +4011,7 @@ tbl: [
 
 		unhide-all: function [face [object!]][
 			foreach dim [x y][unhide/only face dim]
+			face/changed?: #(false)
 			fill face
 			show-marks face
 		]
@@ -4052,6 +4120,7 @@ tbl: [
 		refresh-view: func [face [object!]  ][
 			set-last-page face
 			adjust-scroller face
+			face/changed?: #(false)
 			fill face
 			show-marks face
 		]
@@ -4063,12 +4132,23 @@ tbl: [
 			    print newline
 			]			
 		]
+		
+	    print-table-data: func [ face [object!]][
+	    	col-ndx: face/col-index
+	    	remove-each i col-ndx [ i < 0 ]
+		    print-table/columns/column-names/name/col-sequence (skip face/table-data 1)  (length? face/table-data/1) face/table-data/1 face/name col-ndx
+		]
+		
 
 		insert-row: function [
 			{insert row at row specified}
 			face [object!] 
 			event [event! integer!] {when event is integer! this is the row number used}
 		][
+			if is-filtered? face [
+				status-msg/alert "The Current table is filtered. Please clear the filter before inserting a new row."
+				exit
+			]
 			either integer? event [
 				r: event 
 			][
@@ -4077,6 +4157,9 @@ tbl: [
 			]			
 			add-new-row face
 			insert/only at face/row-index r face/total/y
+			;-- to deal with unfilter properly
+			insert/only at face/default-row-index r face/total/y
+			
 			refresh-view face
 			fill face 
 		]
@@ -4085,13 +4168,22 @@ tbl: [
 			{Appends an empty row at the end of the table data}
 			face [object!]
 		][ 
+			if is-filtered? face [
+				status-msg/alert "The Current table is filtered. Please clear the filter before appending a row to it."
+				exit
+			]
 			add-new-row face
 			append face/row-index face/total/y
+			append face/default-row-index face/total/y
 			refresh-view face
 			fill face
 		]
 
 		insert-virtual-row: function [face [object!] event [event! integer!]][
+			if is-filtered? face [
+				status-msg/alert "The Current table is filtered. Please clear the filter before inserting a new virtual row."
+				exit
+			]			
 			dr: get-draw-row face event
 			ir: get-index-row face dr
 			vr: add-virtual-row face
@@ -4138,6 +4230,7 @@ tbl: [
 					col: col + 1				
 				]
 			]
+			if value? '-target-vid-object- [ -target-vid-object-/visible?: false ]
 		]
 
 		insert-col: function [
@@ -4146,6 +4239,10 @@ tbl: [
 			event [event! none! integer!] {If event is integer! this is the column number used}
 			/ret-col-num {return the column number that has just been created}
 		][
+			if is-filtered? face [
+				status-msg/alert "The Current table is filtered. Please clear the filter before adding a new column."
+				exit
+			]			
 			either integer? event [
 				c: event 
 			][
@@ -4158,6 +4255,7 @@ tbl: [
 			repeat i face/total/y [append face/table-data/:i none]
 			face/total/x: face/total/x + 1
 			insert/only at face/col-index c ( nc: (get-max face/col-index) + 1)
+			insert/only at face/default-col-index c ( nc: (get-max face/col-index) + 1)
 			refresh-view face
 			if ret-col-num [ return nc ]
 		]
@@ -4167,25 +4265,51 @@ tbl: [
 			face [object!]
 			/ret-col-num {returns the new column number just created}
 		][
+			if is-filtered? face [
+				status-msg/alert "The Current table is filtered. Please clear the filter before adding a new column."
+				exit
+			]
 			repeat i face/total/y [append face/table-data/:i none]
 			face/total/x: face/total/x + 1
 			append face/col-index ( nc: (get-max face/col-index) + 1)
+			append face/default-col-index ( nc: (get-max face/col-index) + 1)
 			refresh-view face
-			if ret-col-num [ return nc ]
+			
+			either ret-col-num [ 
+				return nc 
+			][
+				return none
+			]
 		]
 
 		insert-virtual-col: function [face [object!] event [event! integer!]][
+			if is-filtered? face [
+				status-msg/alert "The Current table is filtered. Please clear the filter before inserting a new virtual column."
+				exit
+			]			
 			dc: get-draw-col face event
 			ic: get-index-col face dc
 			vc: add-virtual-col face
 			clear-vid-decor face
 			insert/only at face/col-index ic vc
+			insert/only at face/default-col-index ic vc
 			refresh-view face
 		]
 
-		append-virtual-col: function [face [object!]][
+		append-virtual-col: function [face [object!] /name header-name [string!]][
+			if is-filtered? face [
+				status-msg/alert "The Current table is filtered. Please clear the filter before adding a new virtual column."
+				exit
+			]			
 			vc: add-virtual-col face
 			append face/col-index vc
+			append face/default-col-index vc
+			
+			if name [
+				face/virtual-cols/:vc/source/1: mold header-name
+				face/virtual-cols/:vc/code/1: reduce header-name
+				face/virtual-cols/:vc/data/1: header-name
+			]
 			refresh-view face
 		]
 		
@@ -4331,15 +4455,20 @@ tbl: [
 			]						
 		]
 		
-		
-		
 		place-pre-buit-col: function [
 			face [object!] 
 			event [event!]
 			/append
 		][
 			{Defaults to inserting a pre-built column}
-			if no-header? face [ exit ]
+			if is-filtered? face [
+				status-msg/alert "The Current table is filtered. Please clear the filter before adding any pre-built columns."
+				exit
+			]
+			if no-header? face [ 
+				status-msg/alert "The current table does not have any frozen header. Please freeze a header in place before adding any pre-built columns."
+				exit 
+			]
 			make-overlay-config face
 			cust-list: collect [ foreach item (keys-of face/overlay-config) [ keep to-string item ]]
 			either req-res: request-list-enhanced/size "Select a Custom Pre-Built Column" cust-list 230x200 [
@@ -4351,12 +4480,14 @@ tbl: [
 				either append [
 					new-col: add-virtual-col face
 					system/words/append face/col-index new-col
+					system/words/append face/default-col-index new-col
 				][
 					dc: get-draw-col face event
 					ic: get-index-col face dc
 					new-col: add-virtual-col face
 					clear-vid-decor face
 					insert/only at face/col-index ic new-col								
+					insert/only at face/default-col-index ic new-col								
 				]
 			][	;-- insert data col					
 				either append [
@@ -4735,8 +4866,23 @@ tbl: [
 			show-marks face
 		]
 
+		remove-color-selected: function [face [object!] color [tuple! word! none!]][
+			range: either (length? face/cells-selected) = 1 [
+				face/cells-selected
+			][
+				expand-range-block face/cells-selected
+			]
+			foreach cell range [
+				remove/key face/colors cell
+			]
+			fill face
+		]
+
 		color-selected: function [face [object!] color [tuple! word! none!]][
-			unless color [color: load ask-code]
+			unless color [
+				if not color: request-color [ exit ]
+			]
+			
 			parse face/cells-selected [any [s:
 				pair! '- pair! (
 					mn: (min s/1 s/3) - 1
@@ -4891,11 +5037,13 @@ tbl: [
 			face/scroller/y/position: 1 + face/top/y: face/current/y: face/frozen/y
 			filter-rows face data-col crit
 			face/row-index: head append clear face/row-index face/filtered/y
-
+			
 			adjust-scroller face
 			set-last-page face
 			unmark-active face
 			on-filter face
+			clear-vid-decor face
+			face/changed?: #(false)
 			fill face
 			face/draw: face/draw
 		]
@@ -4906,27 +5054,30 @@ tbl: [
 		][ 
 			face/row-index: skip face/row-index face/top/y
 			face/scroller/y/position: 1 + face/top/y: face/current/y: face/frozen/y
-			face/filtered/y: filter-blk/2
+			face/filtered/y: copy filter-blk/2
 			face/row-index: head append clear face/row-index face/filtered/y
-			face/col-index: filter-blk/1 
+			face/filtered/x: copy filter-blk/1
+			
+			face/col-index: head append clear face/col-index face/filtered/x
 			adjust-scroller face
 			set-last-page face
 			unmark-active face
 			on-filter face
 			clear-vid-decor face 
+			face/changed?: #(false)
 			fill face
 			face/draw: face/draw
 		]		
 
-		on-filter: func [face [object!]][]
-
 		unfilter: func [face [object!]][
 			clear face/filtered/y
+			clear face/filtered/x
 			append clear head face/row-index face/default-row-index
 			append clear head face/col-index face/default-col-index
 			adjust-scroller face
-			on-filter face
+			on-unfilter face
 			clear-vid-decor face 
+			face/changed?: #(false)
 			fill face
 			face/draw: face/draw
 		]
@@ -4991,6 +5142,7 @@ tbl: [
 		]
 
 		adjust-border: function [face [object!] event [event! none!] dim [word!]][
+			
 			face/pane: layout/only []
 			if face/on-border?/:dim > 0 [
 				ofs0: either dim = 'x [
@@ -5052,7 +5204,8 @@ tbl: [
 				hide-editor face
 				if value? '-target-vid-object- [ -target-vid-object-/visible?: false ]
 				set-grid face
-				clear-vid-decor face 
+				clear-vid-decor face
+				face/changed?: #(false) 
 				fill face
 			]
 			step
@@ -5061,7 +5214,9 @@ tbl: [
 		adjust-scroller: func [face [object!] /only][
 			face/scroller/y/max-size:  max 1 face/total/y: length? face/row-index
 			face/scroller/x/max-size:  max 1 face/total/x: length? face/col-index
-			unless only [set-grid face]
+			unless only [
+				set-grid face
+			]
 			face/scroller/y/page-size: min face/grid/y face/scroller/y/max-size
 			face/scroller/x/page-size: min face/grid/x face/scroller/x/max-size
 		]
@@ -5630,6 +5785,7 @@ tbl: [
 				face/top/y: face/current/y: 0
 				1
 			]
+			face/changed?: #(false)
 			fill face
 			recycle/on
 		]
@@ -5637,12 +5793,14 @@ tbl: [
 		unsort: func [face [object!]][
 			append clear face/row-index face/default-row-index
 			adjust-scroller face
+			face/changed?: #(false)
 			fill face
 		]
 
 		resize: func [face [object!]][
 			face/grid-size: face/size - face/scroller-width
 			adjust-size face
+			face/changed?: #(false)
 			fill face
 			show-marks face
 		]
@@ -6092,26 +6250,27 @@ tbl: [
 		do-menu: function [face [object!] event [event! none!]][
 			switch/default event/picked [
 				; TABLE
-				open-table      [open-table face]
-				save-table      [save-table face]
-				save-table-as   [save-table-as face]
-				save-state      [save-state face]
-				set-column-names  [set-column-names face]
-				use-state       [use-state face]
-				unhide-all      [unhide-all  face]
-				;force-state     [use-state/force face]
-				clear-color     [clear face/colors fill face]
-				forget-names    [forget-names face none]
-				show-table-details  [ table-details face ]
-				refresh-view	[ refresh-view face ]
-			    print-code-overlays [ print-code-overlays face ]
-				open-big        [open-big-table face]
+				open-table      	[open-table face]
+				save-table      	[save-table face]
+				save-table-as   	[save-table-as face]
+				save-state      	[save-state face]
+				set-column-names  	[set-column-names face]
+				use-state       	[use-state face]
+				unhide-all      	[unhide-all  face]
+				;force-state     	[use-state/force face]
+				clear-color     	[clear face/colors fill face]
+				forget-names    	[forget-names face none]
+				print-table-config   [print-table-config face ]
+			    print-data			[print-table-data face ]
+				refresh-view		[refresh-view face ]
+			    print-code-overlays [print-code-overlays face ]
+				open-big        	[open-big-table face]
 
 				; CELL
-				edit-cell       [on-dbl-click face event]
-				edit-cell-multi-line [ multi-line-editor face event ]
-				freeze-cell     [freeze face event 'y freeze face event 'x]
-				unfreeze-cell   [unfreeze face 'y unfreeze face 'x]
+				edit-cell       		[on-dbl-click face event]
+				edit-cell-multi-line 	[ multi-line-editor face event ]
+				freeze-cell     		[freeze face event 'y freeze face event 'x]
+				unfreeze-cell   		[unfreeze face 'y unfreeze face 'x]
 
 				; ROW
 				freeze-row      [freeze face event 'y]
@@ -6222,8 +6381,9 @@ tbl: [
 				cut-selected    [copy-selected/cut face]
 				paste-selected  [paste-selected face]
 				transpose       [paste-selected/transpose face]
-				color-selected  [color-selected face none]
-				name-selected   [name-selected face none]
+				color-selected  		[color-selected face none]
+				remove-color-selected 	[remove-color-selected face none ]
+				name-selected   		[name-selected face none]
 			][
 				case [
 					all [menu: face/menu/"Table"/"Select named range" find menu name: form event/picked] [
@@ -6232,8 +6392,6 @@ tbl: [
 				]
 			]
 		]
-
-
 
 		do-over: func [
 			face [object!]
@@ -6354,7 +6512,7 @@ tbl: [
 		; OPEN
 
 		open-red-type-table: func [
-			{Opens .red table file by default}
+			{Opens .red or .redtbl file. '.red' by default}
 			face [object!] 
 			fdata [block!] 
 			/only 
@@ -6390,7 +6548,6 @@ tbl: [
 			table-obj: face 
 			init-grid face
 			init-indices/only face
-
 			if opts/frozen-cols [append clear face/frozen-cols opts/frozen-cols ]
 			if opts/frozen-rows [append clear face/frozen-rows opts/frozen-rows ]
 			if opts/read-only-rows [append clear face/read-only-rows opts/read-only-rows ]
@@ -6398,8 +6555,12 @@ tbl: [
 			if opts/auto-incr [append clear face/auto-incr opts/auto-incr ]
 			if opts/col-names [append clear face/col-names opts/col-names ]
 			face/frozen: as-pair length? face/frozen-cols length? face/frozen-rows
+			
 			append clear face/col-index either opts/col-index [opts/col-index][face/default-col-index]
 			append clear face/row-index either opts/row-index [opts/row-index][face/default-row-index]
+			face/default-col-index: copy face/col-index 
+			face/default-row-index: copy face/row-index 
+			
 			either sz: opts/sizes [
 				if sz/x [face/sizes/x: to-map sz/x]
 				if sz/y [face/sizes/y: to-map sz/y]
@@ -6454,6 +6615,7 @@ tbl: [
 				face/code-overlays: fdata/code-overlays 
 				if fdata/defaults [ face/defaults: fdata/defaults ]
 				if fdata/col-align [ face/col-align: fdata/col-align ]				
+				if fdata/colors [ face/colors: fdata/colors ]				
 			][
 
 				if all [	;-- gurzgri patch
@@ -6471,9 +6633,15 @@ tbl: [
 					if redbin-data/col-names [ face/col-align: redbin-data/col-names ]
 				]
 			]
+			face/name: either file? face/data [
+				first split-filename second split-path face/data 
+			][
+				"none"
+			]
 			fill face
 			show-marks face
 			no-over: true
+			
 		]
 
 		open-table: func [
@@ -6654,7 +6822,8 @@ tbl: [
 					to-set-word 'code-overlays  to map! to block! face/code-overlays
 					to-set-word 'defaults       to map! to block! face/defaults
 					to-set-word 'col-align      to map! to block! face/col-align
-					to-set-word 'col-names    		to block! face/col-names
+					to-set-word 'col-names    			to block! face/col-names
+					to-set-word 'colors         to map! to block! face/colors
 		]
 				'redbin
 		]
@@ -6674,6 +6843,7 @@ tbl: [
 					to-set-word 'code-overlays  to map! to block! face/code-overlays
 					to-set-word 'defaults       to map! to block! face/defaults
 					to-set-word 'col-align      to map! to block! face/col-align
+					to-set-word 'colors         to map! to block! face/colors
 				]
 				'redbin
 		]
@@ -6692,6 +6862,7 @@ tbl: [
 				file: save-table-as face
 			]
 			face/no-over: true
+			on-saved face
 			file
 		]
 
@@ -6738,8 +6909,19 @@ tbl: [
 			do-actor face none 'click
 		]
 		
-		on-click: func [face [object!] event [event! none!]] []
-		on-change: func [face [object!] event [event! none!]] []
+		on-click:   func [face [object!] event [event! none!]] []
+		on-change:  func [face [object!] event [event! none!]] []
+		on-filter: func [face [object!]][]
+		on-unfilter: func [face [object!]][]
+		on-changed: func [face[object!]][]
+		trigger-on-changed: func [face [object!]][
+			either face/changed? [
+				on-changed face 
+			][
+				face/changed?: #(true)
+			]
+		]
+		on-saved: func [face[object!]][]
 		
 		on-unfocus: func [face [object!]][
 			if all [									;accomodate vid cells.
@@ -6885,10 +7067,22 @@ tbl: [
 			spec [block!] {Allows select, where with and/or, order, limit }
 			/index {return a block the index positions [ cols rows ] }
 		][
-			data: table-face/table-data
-		    rows: next data
+		    rows: skip table-face/table-data table-face/top/y
 		    
-		    headers: selected: collect [ foreach [ nam num ] table-face/col-names [ keep nam ]]
+		    if ((length? table-face/col-names) / 2 ) <> (length? table-face/col-index )[
+		    	request-message {The "query" function needs all column names to be defined.^/Please use the Menu: "Column/Set Column Names" to define the columns. Once this is done you can use the "query" function.}
+		    	return none
+		    ]
+		    selected: headers: collect [ 
+		    	foreach [ nam num ] table-face/col-names [ 
+		    		if num > 0 [ keep nam ]
+		    	]
+		    ]
+		    zselected: collect [ 
+		    	foreach [ nam num ] table-face/col-names [ 
+		    		keep nam
+		    	]
+		    ]
 		    where-conds: copy []
 		    where-ops: copy []
 		    order-col: none
@@ -6908,8 +7102,14 @@ tbl: [
 		          | 'limit set limit-n integer!
 		        ]
 		    ]
+		    ;-- col-indices: collect [foreach n selected [keep (system/words/select table-face/col-names n)]]
 		    
-		    col-indices: collect [foreach c selected [keep index? find headers c]]
+		    col-indices: collect [
+		    	foreach [ nam num ] table-face/col-names [
+		    		if num < 0 [ keep num ]
+		    		if find selected nam [ keep num ]
+		    	]
+		    ]
 		    
 		    ;-- Build combined condition evaluator
 		    eval-where: function [ctx conds ops][
@@ -6937,13 +7137,14 @@ tbl: [
     		row-num: 1  ; Start counting rows (1-based index into 'rows')		    
 		    
 		    foreach row rows [
-		        ctx: context collect [
-		            repeat i length? headers [
-		                keep to-set-word headers/:i
-		                keep row/:i
-		            ]
-		        ]
-		        
+				ctx: context collect [
+				    foreach [col-name col-num] table-face/col-names [
+				    	if col-num > 0 [
+				        	keep to-set-word col-name
+				        	keep row/:col-num
+				        ]
+				    ]
+				]		        
 		        if eval-where ctx where-conds where-ops [
 		            indices: collect [foreach c selected [keep index? find headers c]]
 		            append/only result collect [
@@ -6954,14 +7155,6 @@ tbl: [
 		        row-num: row-num + 1
 		    ]
 		    
-		    ;-- Sort if needed
-;		    if order-col [
-;		        ofs: index? find selected order-col
-;		        sort/compare next result func [ a b ] [ a/:ofs < b/:ofs ]
-;		        if order-dir = 'desc [reverse next result]
-;		    ]
-
-			;-- Fixed sort
 			if order-col [
 			    ofs: index? find selected order-col
 			    sort/compare next result func [a b][
@@ -6973,7 +7166,6 @@ tbl: [
 			    ]
 			    if order-dir = 'desc [reverse next result]
 			]
-		    
 		    
 		    ;-- Limit
 		    if limit-n [

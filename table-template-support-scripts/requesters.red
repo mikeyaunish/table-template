@@ -294,34 +294,51 @@ set 'request-text func [
 
 ;---------------------------------------------------------------------------
 
-set 'request-list function [	;-- request-list:
-	{Modified By: Mike Yaunish. Supports 'one-click'}
+set 'request-list function [	
 	msg
 	data [block!]
 	/size sz [pair!]
 	/one-click {Allows one-click selection}
+	/offset win-offset
 ][
+	
     sz: any [sz 200x150]
     picked: 0
+    req-opts: copy/deep std-dialog-opts
+	if offset [
+		append req-opts compose [ offset: (win-offset)]
+	]
+	title-str: "Select..."
     either one-click [
-        actor-name: 'on-select 
-        ok-status: 'hidden
+        actor-name: 'on-change 
+        append req-opts compose [ offset: (win-offset) ]
+        title-str: "One Click Select"
     ][ 
         actor-name: 'on-dbl-click 
-        ok-status: 'all-over ;-- bogus place holder
     ]
-	view view-composed: compose/only/deep [
-		title "Select..."
+	view/options view-composed: compose/only/deep [
+		title (title-str)
 		across
 		text font-size 12 200 (form msg) return 
 		f-lst: text-list sz data (data)
-		    on-select [ picked: event/picked ] 
-		    (actor-name) [res: true picked: event/picked  unview] 
+			on-down [ 
+				on-down?: true
+			]
+		    on-select [ 
+		    	picked: event/picked 
+		    ] 
+		    (actor-name) [
+		    	if actor-name = 'on-change [
+		    		if not on-down? [ exit ]	
+		    	]
+	    		res: true 
+	    		unview	
+		    ] 
 		return
-		button "OK"     on-click [ res: true  unview] (ok-status)
+		button "OK"     on-click [ res: true  unview] 
 		button "Cancel" on-click [ res: none  unview]
 		do [ set-focus f-lst ]
-	] std-dialog-opts
+	] req-opts
 	if any [std-dialog-actors/res res] [pick f-lst/data picked ]
 ]	
 
@@ -1113,3 +1130,54 @@ request-table-link-context: context [
 	]
 ]
 
+request-yes-no: func [
+    message [string!] "Message to display"
+    /size area-size "The size of the text area"
+][
+    return-value: none
+    if not size [area-size: 400x200]
+    req-custom-layout: layout compose [
+        title "User Input Required"
+        area (area-size) message font-size 12 wrap
+        return
+        button "YES" 100x24 [
+            return-value: true
+            unview/only req-custom-layout
+        ]
+        button "NO" 100x24 [
+            return-value: false
+            unview/only req-custom-layout
+        ]
+        button "CANCEL" 100x24 [
+            return-value: false
+            unview/only req-custom-layout
+        ]
+    ]
+    view req-custom-layout
+    return return-value
+]
+
+request-date: function [/set-date seed-date [date!]][
+    seed-date: any [seed-date now/date ]
+    view [
+        Title "Select a date"
+        on-key [
+            if event/key = #"^[" [
+                res: none
+                unview 
+            ]    
+        ]        
+        on-close [ res: none ]
+        calendar1: calendar seed-date
+    	return 
+        button "OK" [ 
+                res: calendar1/data
+                unview 
+        ]
+        button "CANCEL" [ 
+                res: none
+                unview 
+            ] 
+    ]    
+    return res
+]

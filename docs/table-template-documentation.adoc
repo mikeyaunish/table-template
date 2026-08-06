@@ -1,8 +1,8 @@
 :experimental:
 = Table Template User Documentation
 :author: @toomasv, @mikeyaunish
-:version: 0.121
-:revdate: 14-May-2026
+:version: 0.122
+:revdate: 5-Jun-2026
 :toc: left
 :toclevels: 3
 :sectnums:
@@ -30,8 +30,8 @@ The `table-template.red` file provides a complete table widget implementation fo
 * Context menus
 
 === Version Information
-* **Version:** 0.121
-* **Date:** 14-May-2026
+* **Version:** 0.122
+* **Date:** 5-Jun-2026
 * **Repository:** https://github.com/mikeyaunish/table-template[GitHub]
 
 === Dependencies
@@ -172,6 +172,7 @@ view [table options [sheet: #(true)]]
 
 * Headers generated with `sheet` option refer to the actual visual order of rows/cols, not to their order in original data
 * When sorting, headers generated with `sheet` option will not change, but headers generated with `auto-col` and `auto-row` will be reordered
+* When Sheet mode is enabled, you can NOT define the table data file using the `data` option.
 
 === Loading from File
 
@@ -431,7 +432,7 @@ Open the file /examples-gallery/append-data-to-table.red to see the full code.
 
 Code overlays are executed in a left to right, top to bottom order. Currently there is no dependency checking, so if a cell depends on the value of another cell, it is best to pull values from a cell that is to the left of the current cell. In the future, dependency checking and circular reference checking will be added to the code overlay engine.
 
-When driving overlays from your own Red code, `do-code-overlay` takes `face`, `data-x`, and `data-y` only (a former `cell` argument was removed).
+When driving overlays from your own Red code, `do-code-overlay` takes `face`, `data-x`, and `data-y` only (a former `cell` argument was removed). Code and VID overlay execution exits immediately when `is-filtered? face` is true, so overlays do not run on filtered views.
 
 === Special functions and variables available in the Code and VID Overlay context
 
@@ -562,6 +563,16 @@ USAGE:
 DESCRIPTION: 
      Returns TRUE if the current row is NOT a first or last data row. Only available and useful in the Code and VID Overlay context. 
      MID-ROW? is a function! value.
+----
+
+[source,red]
+----
+USAGE:
+     TOTAL-THIS-COL 
+
+DESCRIPTION: 
+     When called on the last data row, sums the current column across middle data rows (all row-index entries except first and last), writes the total to the current cell, and sets cell color to yellow. Only available in the Code and VID Overlay context alongside first-row?, last-row?, and mid-row?.
+     TOTAL-THIS-COL is a function! value.
 ----
 
 ==== Setter Functions
@@ -750,7 +761,7 @@ USAGE:
      TABLE1/ACTORS/APPEND-DATA-ROW face val
 
 DESCRIPTION: 
-     Appends a row of data at the end of existing data. 
+     Appends a row of data at the end of existing data. Blocked when the table is filtered (`status-msg/alert`).
      TABLE1/ACTORS/APPEND-DATA-ROW is a function! value.
 
 ARGUMENTS:
@@ -785,7 +796,7 @@ USAGE:
      TABLE1/ACTORS/APPEND-COL face
 
 DESCRIPTION: 
-     Append a column to the existing table data. 
+     Append a column to the existing table data. Blocked when the table is filtered. Returns `none` when `/ret-col-num` is not used.
      TABLE1/ACTORS/APPEND-COL is a function! value.
 
 ARGUMENTS:
@@ -793,6 +804,19 @@ ARGUMENTS:
 
 REFINEMENTS:
      /ret-col-num => returns the new column number just created.
+----
+
+[source,red]
+----
+USAGE:
+     TABLE1/ACTORS/APPEND-VIRTUAL-COL face
+
+DESCRIPTION: 
+     Append a virtual column. Blocked when the table is filtered.
+     TABLE1/ACTORS/APPEND-VIRTUAL-COL is a function! value.
+
+REFINEMENTS:
+     /name header-name => sets virtual column source, code, and data header fields from the supplied string.
 ----
 
 [source,red]
@@ -850,7 +874,7 @@ USAGE:
      <table-name>/ACTORS/SET-DATA face col-id row-id val
 
 DESCRIPTION: 
-     sets table data and refreshes table display. By default uses visible/drawn row and column NOT data index numbers. 
+     sets table data and refreshes table display. By default uses visible/drawn row and column NOT data index numbers. Calls `trigger-on-changed face` after modifying data.
      <table-name>/ACTORS/SET-DATA is a function! value.
 
 ARGUMENTS:
@@ -991,21 +1015,37 @@ NOTE: The following functions will also refresh the table display when the /refr
 * `set-cell`
 
 === Helper Functions
-==== Displaying Details about the Table
+==== Displaying Table Data and Configuration
 [source,red]
 ----
 USAGE:
-     TABLE-DETAILS face
+     PRINT-TABLE-DATA face
 
 DESCRIPTION: 
-     Displays details about the table.
-     TABLE-DETAILS is a function! value.
+     Prints data rows (skipping the header row) via `print-table/columns/column-names/name/col-sequence`, honoring current `col-index` (virtual columns removed), table `name`, and header row.
+     PRINT-TABLE-DATA is a function! value.
 ----
 
 [source,red]
 ----
 Example Usage:
-table-details table1
+table1/actors/print-table-data table1
+----
+
+[source,red]
+----
+USAGE:
+     PRINT-TABLE-CONFIG face
+
+DESCRIPTION: 
+     Displays table configuration details (external helper, same pattern as the former table-details action).
+     PRINT-TABLE-CONFIG is a function! value.
+----
+
+[source,red]
+----
+Example Usage:
+print-table-config table1
 ----
 
 
@@ -1022,7 +1062,11 @@ Virtual columns support an easy cell referencing system:
 
 === Capturing data changes
 
-The table style supports a before and after flag to indicate when cell data has changed. The `face/change-state` can be `'before` or `'after`, and `face/active` contains the address of the changed cell. The address returned is a pair of the column number and the row number.
+The table style supports several mechanisms for detecting when data or layout has changed.
+
+==== Cell edit notification (`on-change`)
+
+The `face/change-state` can be `'before` or `'after`, and `face/active` contains the address of the changed cell. The address returned is a pair of the column number and the row number.
 
 Example:
 
@@ -1037,6 +1081,29 @@ view [
     ]
 ]
 ----
+
+==== Change flag and hooks (`changed?`, `on-changed`, `on-saved`)
+
+* `face/changed?` — boolean flag (`#(false)` by default) used by the change-notification pipeline. Reset to `#(false)` by many view and layout operations (refresh, hide/unhide, filter, unfilter, sort, unsort, resize, and related paths). Set by `trigger-on-changed` on the first change after a reset.
+* `on-changed` — empty overridable hook on the table face; invoked when the table is considered changed (after the first `trigger-on-changed` call while `changed?` is already true).
+* `trigger-on-changed` — actor that sets `face/changed?` on first call after a reset; on subsequent calls while already changed, invokes `on-changed`. Called from `set-data`, `set-column-names`, and `fill` (after `auto-save`).
+* `on-saved` — empty overridable hook; invoked from `save-table` after a successful save.
+
+Example overriding hooks in a layout:
+
+[source,red]
+----
+view [
+    table1: table data %mydata.redtbl with [
+        on-changed: func [face][ print ["table changed:" face/name] ]
+        on-saved: func [face][ print ["table saved:" face/name] ]
+    ]
+]
+----
+
+==== Table name (`face/name`)
+
+When a table is opened from a file, `face/name` is set from the filename (without extension). When `face/data` is not a file, `face/name` is `"none"`. The name is used by `print-table-data` and related diagnostics.
 
 ==== VID Cell Address
 
@@ -1109,6 +1176,12 @@ The following table shows where the various functions are available and applicab
 | ✓ true
 
 | mid-row?
+| ✓ true
+| ✓ true
+| ✓ true
+| ✓ true
+
+| total-this-col
 | ✓ true
 | ✓ true
 | ✓ true
@@ -1309,7 +1382,8 @@ Sets static names for columns (requires table to be loaded from a file, not just
 * **Select named range** - Select a named range
 * **Forget names** - Remove named ranges
 * **Information**
-  ** **Show Details** - Show table details
+  ** **Print Table Data** - Print data rows to the console (skipping header row)
+  ** **Table Configuration** - Show table configuration details
   ** **Print Code Overlays** - Print overlay source to the console for debugging
 * **Refresh View** - Rebuild the display from current data and overlays
 
@@ -1318,7 +1392,9 @@ Sets static names for columns (requires table to be loaded from a file, not just
 * **Copy** - Copy selected cells
 * **Cut** - Cut selected cells
 * **Paste** - Paste cells
-* **Set Color** - Set color for selected cells
+* **Color**
+  ** **Set Color** - Set color for selected cells (opens `request-color` when no color is passed)
+  ** **Remove Color** - Clear per-cell color entries from `face/colors` for the current selection
 * **Set Name** - Set name for selected range
 
 == Data Types
@@ -1389,7 +1465,7 @@ Pre-built VID overlays include:
 This overlay is only used on data columns, not virtual columns. For more information see <<_data_checkbox_for_logic>>.
 
 * `data-request-date` - Date column with a small control that opens `request-date` and writes the chosen value back through `set-data/index/refresh`. Data columns only. See <<_data_request_date>>.
-* `data-table-link` - Opens a link dialog to pick or edit a related value; writes go through `set-data/index/refresh` so row/column indices stay aligned with stored addresses. The `vid-lib` entry uses `datatype: "integer"`. Optional `/pre-built` setup supplies sample column text. Data columns only.
+* `data-table-link` - Opens a link dialog to pick a related value; writes go through `set-data/index/refresh` so row/column indices stay aligned with stored addresses. The `vid-lib` entry uses `datatype: "integer"`. Optional `/pre-built` setup supplies sample column text. Data columns only. Link cell label format is `link-data (#id)`. When running inside table-stack, a context menu offers *Goto Linked Table* (uses `table-stack-tab-panel` and `find-tab-index`) and *Goto Linked Row*; outside table-stack, *Goto Linked Table* shows a status message.
 
 * `cell-checkbox-for-row-selection` - Checkbox for row selection (used on virtual columns) Allows selection of multiplerows in a table and some sort of user defined action can be taken on those selected rows. 
 This overlay is only used on virtual columns, not data columns. For more information see <<_cell_checkbox_for_row_selection>>.
@@ -2275,6 +2351,7 @@ This is the new table file format, which saves all data, customization, overlays
 ----
 redbin-data: load/as %table.redtbl 'redbin
 ----
+
 
 == License and Credits
 

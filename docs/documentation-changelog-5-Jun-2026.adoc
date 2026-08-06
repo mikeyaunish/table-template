@@ -1,0 +1,188 @@
+= Table template changelog: v0.121 → v0.122
+:revdate: 5 Jun 2026
+:toc: left
+:toclevels: 2
+
+This document summarizes behavioral and API changes between `table-template-v121.red` and `table-template-V122.red`.
+
+== Release metadata
+
+* Template version bumped from `0.121` to `0.122` (header block and `tbl` config).
+* Release date in the file header updated from 14 May 2026 to 5 Jun 2026.
+* `init` actor tagged with `{V2}` comment marker.
+
+== New face fields
+
+* `changed?` — boolean flag (`#(false)` by default) used by the change-notification pipeline; reset to false by many view/layout operations and set by `trigger-on-changed`.
+* `name` — string copied from the loaded file basename on open (or `"none"` when `face/data` is not a file).
+
+== User interface
+
+=== Context menu — Table / Information
+
+* *Show Details* (`show-table-details` / `table-details`) removed.
+* Replaced by:
+** *Print Table Data* (`print-data` → `print-table-data` actor).
+** *Table Configuration* (`print-table-config`; external helper, same pattern as the former details action).
+* *Print Code Overlays* unchanged.
+
+=== Context menu — Selection / Color
+
+* *Set Color* moved under a new *Color* submenu.
+* New *Remove Color* action (`remove-color-selected`) clears per-cell color entries from `face/colors` for the current selection.
+
+=== Color picker
+
+* `color-selected` no longer uses `load ask-code` when no color is passed; it opens `request-color` instead.
+
+== New actors and hooks
+
+=== Change notification
+
+* `on-changed` — empty overridable hook invoked when the table is considered changed.
+* `trigger-on-changed` — sets `face/changed?` on first call after a reset; on subsequent calls while already changed, invokes `on-changed`.
+* Called from `set-data`, `set-column-names`, and `fill` (after `auto-save`).
+* `on-saved` — new empty hook; invoked from `save-table` after a successful save.
+
+=== Filter lifecycle
+
+* `on-filter` — retained as an overridable hook (still empty by default); now paired with `on-unfilter`.
+* `on-unfilter` — new empty hook; `unfilter` calls this instead of `on-filter`.
+* `is-filtered?` — returns true when `face/filtered` is not the empty map `#[ y: [] x: [] ]`.
+
+=== Diagnostics and printing
+
+* `print-table-data` — prints data rows (skipping header row) via `print-table/columns/column-names/name/col-sequence`, honoring current `col-index` (virtual columns removed), table `name`, and header row.
+* `find-tab-index` — locates a tab entry in a block by matching the third field of each element (`skip data/:i 2`).
+
+=== Status messages
+
+* `status-msg` gains `/alert` refinement; when used, shows `request-message` instead of `print`.
+
+== Code and VID overlay APIs
+
+=== Overlay execution guard
+
+* `do-code-overlay` (and the code/VID overlay context block) exits immediately when `is-filtered? face` is true, so overlays do not run on filtered views.
+
+=== New overlay helper: `total-this-col`
+
+* Available in code/VID overlay context alongside `first-row?`, `last-row?`, and `mid-row?`.
+* When called on the last data row, sums the current column across middle data rows (all `row-index` entries except first and last), writes the total to the current cell, and sets cell color to yellow.
+
+== Data read/write helpers
+
+=== `append-data-row`
+
+* Blocked when the table is filtered (`status-msg/alert`).
+* Uses `set-data/row/:refresh/index` instead of `set-data/row/:refresh` so row indices align with stored data addresses.
+
+=== `set-data`
+
+* Calls `trigger-on-changed face` after modifying data (when `/refresh` is used or otherwise at end of function).
+
+=== Column-name error messages
+
+* Wording normalized: menu path corrected to *Column/Set Column Names* (was *Table/Set Column Names* in one `get-cell` message).
+* Phrase *properly use* shortened to *use* in several column-name requirement dialogs.
+
+== `request-table`
+
+* New refinements:
+** `/offset offset-val` — passes offset to `request-list-enhanced/fixed-font/size/offset`.
+** `/full` — returns the full match from `find-in-array-at` instead of only `last req-res`.
+* Returns `none` explicitly when the requester is cancelled or no row is selected (previously returned unset/`none` from the `if` block).
+
+== Filtering and unfiltering
+
+=== Row/column index preservation
+
+* `filter-with` now copies filtered row and column lists into `face/filtered/y` and `face/filtered/x`, then rebuilds `face/row-index` and `face/col-index` from those copies (column filtering was previously applied by direct assignment only).
+* `unfilter` clears both `face/filtered/y` and `face/filtered/x`, restores indices from `default-row-index` / `default-col-index`, and calls `on-unfilter`.
+* `filter` and `filter-with` call `clear-vid-decor` and reset `face/changed?` to `#(false)`.
+
+=== Structural operations blocked while filtered
+
+The following now exit with `status-msg/alert` when `is-filtered? face`:
+
+* `append-data-row`, `insert-row`, `append-row`, `insert-virtual-row`
+* `insert-col`, `append-col`, `insert-virtual-col`, `append-virtual-col`
+* `place-pre-buit-col`
+
+== Row and column operations
+
+=== Default index maintenance
+
+* Row insert/append updates `face/default-row-index` in addition to `face/row-index` so unfilter restores correctly.
+* Column insert/append/virtual/pre-built paths update `face/default-col-index` alongside `face/col-index`.
+
+=== `append-col`
+
+* When `/ret-col-num` is not used, explicitly returns `none` (previously fell through without a return value).
+
+=== `append-virtual-col`
+
+* New `/name header-name` refinement sets virtual column `source`, `code`, and `data` header fields from the supplied string.
+
+=== Pre-built columns
+
+* Missing frozen header now shows an alert instead of silent exit.
+* Filtered-table guard added (see above).
+
+== Cell coloring and drawing
+
+=== Persistence
+
+* `face/colors` cleared in `clear-table-state`.
+* Saved and loaded in redbin state (`save-state`, `open-red-type-table` / redbin path) alongside existing overlay maps.
+
+=== Render path
+
+* Non-VID overlay cells apply stored colors from `face/colors/(as-pair data-x data-y)` to the draw cell pen color (`cell/4`).
+
+== `data-table-link` overlay
+
+=== Context menu (table-stack integration)
+
+* Context menu is created only when `value? 'table-stack-tab-panel`.
+* *Edit Link* removed.
+* *Goto Linked Row* added (loads link detail and parent cell value; navigation body is started but not completed in this version).
+* *Goto Linked Table* now uses `table-stack-tab-panel` and `find-tab-index` instead of `table-tabs/actors/select-table`; shows a status message when not running inside table-stack.
+
+=== Display text
+
+* Link cell label format changed from `(id) link-data` to `link-data (#id)`.
+* Value checks use `face/table-data` instead of `table-obj/table-data`.
+
+== Initialization and grid setup
+
+* `init-grid` uses `length? any [ first face/table-data [] ]` so an empty table does not error on `first`.
+* `open-red-type-table` docstring notes `.red` or `.redtbl` support.
+* After loading indices from options, `default-col-index` and `default-row-index` are copied from the active `col-index` / `row-index`.
+* On open, `face/name` is set from the filename (without extension) when `face/data` is a file.
+
+== `query` function
+
+* Row source changed from `next table-face/table-data` to `skip table-face/table-data table-face/top/y` (respects vertical scroll offset).
+* Requires all columns to be named: `(length? col-names) / 2` must equal `(length? col-index)` or a message is shown and `none` is returned.
+* Header/selection lists built only from named columns with `num > 0` (data columns).
+* `col-indices` includes virtual column numbers (`num < 0`) plus selected data column numbers from `col-names`.
+* WHERE evaluation context binds column names to `row/:col-num` using `col-names` pairs instead of positional `headers/:i` / `row/:i`.
+* Removed commented-out legacy sort block (active sort logic unchanged).
+
+== Save/load
+
+* `save-table` invokes `on-saved face` after save.
+* Redbin serialization includes `colors` map in both save paths.
+
+== Miscellaneous behavior
+
+* `set-col-type` alert text: *data Type* → *datatype*.
+* F4 VID overlay restore hides `-target-vid-object-` when present.
+* `changed?` reset added to: `refresh-view`, hide/unhide row/column helpers, `filter`, `filter-with`, `unfilter`, border adjustment step, sort/unsort, resize, and related layout refresh paths.
+
+== Minor / cosmetic
+
+* Stray blank lines removed in several locations.
+* `do-menu` switch entries realigned (spacing only).
+* `adjust-scroller` `unless only` block reformatted (behavior unchanged).

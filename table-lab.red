@@ -88,7 +88,6 @@ table-lab-layout: [
 						table1/data: none
 						table1/actors/init/with table1 result
 					]
-					
 				]
 		]
 	return

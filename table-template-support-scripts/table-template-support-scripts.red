@@ -2,28 +2,40 @@ Red [
     Title: "table-template-support-scripts.red"
 ]
 
+multi-split: func [
+    series [any-string!]
+    dlm [block!] "block of delimiters" /local d res i
+][
+    foreach d dlm [
+        res: split series d
+        either (d = last dlm) [
+            series: res
+        ] [
+            series: form res
+        ]
+    ]
+    remove-each i series [i = ""]
+    return series
+]
+
 get-absolute-offset: function [
 	face
 ][
 	offset-adjust: [ 6x6 8x31 6x26 8x51 ] ; items 1 = no-decor, 2 = Win Bar only, 3 = Menu, 4 = Bar + Menu ; 4x4 added as a fix
 	adjust-index: 1
 	adjustment: 0
-	dprint [ "get-absolute-offset face/offset =" mold face/offset]
 	results: face/offset
 	target: face/parent
 	until [
-		dprint [ "get-absolute-offset" target/type "=" target/offset ]
 		results: results + target/offset
 		if target/type = 'window [
 			if not find target/flags 'no-title [ adjust-index: adjust-index + 1 ]
 			if not none? target/menu [ adjust-index: adjust-index + 2 ]
 			adjustment: (pick offset-adjust adjust-index)
-			dprint [ "get-absolute-offset adjustment =" mold adjustment]
 		]
 		target: target/parent
 		(target/type = 'screen)
 	]
-	dprint [ "get-absolute-offset results =" mold results " + adjustment " mold adjustment]
 	return (results + adjustment)
 ]
 
@@ -160,22 +172,16 @@ get-widest-column: function [
     return either return-string [ widest-string ][ widest-col ]
 ]
 
-ptd: print-table-data: function [ 
-	table-name [string!]
-	data [block!]
-][
-	print-table/columns/column-names/name (skip data 1)  (length? data/1) data/1 table-name
-]
-
 pt: print-table: function [ 
-	{prints out in a table format from an array that contains key value pairs. V16}
-    'table-blk  {variable name containing the table}
+	{prints out a data block in key/value pair. V19}
+    'table-blk  {series}
     /width column-width [ integer! block!]
     /max-width max-wide [integer!] {Maximum width of any column.Only applies when /width is not used.}
     /output
     /name named-table [string!]
-    /columns num-of-cols
+    /columns num-of-cols {defines how many columns contained within each block}
     /column-names col-names-blk [ block! ]
+    /col-sequence col-seq [block!]
 ][ 
     outstring: copy ""
     either output [
@@ -209,8 +215,6 @@ pt: print-table: function [
     to-block-in-block: function [blk][
         either ((type? blk/1) <> block!)[ reduce [blk] ][ blk ]
     ]
-    
- 
     
     either all [ (not block? table-block/1) columns ] [
         table-block: series-to-blocks table-block num-of-cols
@@ -281,36 +285,38 @@ pt: print-table: function [
     
     ndx: 1
     tprin " "
-    foreach [ x y ] col-headings [
+    col-indices: either col-sequence [ 
+    	col-seq 
+    ][
+    	collect [repeat i ((length? col-headings) / 2 ) [keep i]]
+    ]
+    
+    foreach col-num col-indices [	
+    	ndx: col-num 
+    	x: pick col-headings (( col-num * 2) - 1)
     	x: to-string x
-    	replace/all x "^/" (to-char 182)
+    	replace/all x "^/" " "
         pad-size: (pick width-list ndx)
         tprin [ pad x pad-size ]
-        ndx: ndx + 1 
     ]
+    
     tprint ""
     ndx: 1 
-    loop cols-in-table [ ;-- print column heading dividers
-        pad-size: (pick width-list ndx)
-        tprin pad/with (copy " ") pad-size #"-"
-        ndx: ndx + 1
+    foreach col-num col-indices [ ;-- print column heading dividers
+        ;pad-size: (pick width-list ndx)
+        pad-size: (pick width-list col-num)
+        tprin pad/with (copy " ") pad-size #"─"
+        ;ndx: ndx + 1
     ]
     tprint ""
     foreach entry table-block [ ;-- printing table body 
         ndx: 1
         tprin " "
-
-        either columns [
-            skip-count: 1 
-        ][
-            entry: copy skip entry 1 ;-- start at 2 and do every even number    
-            skip-count: 2
-        ]
-        
-        forskip entry skip-count [
-            y: first entry 
-            pad-size: (pick width-list ndx)
-            ndx: ndx + 1 
+        skip-count: either columns [ 1 ][ 2 ]
+        foreach col-num col-indices [
+        	pick-ndx: (col-num * skip-count)
+        	y: pick entry pick-ndx
+			pad-size: (pick width-list col-num)
             z: copy to-valid-string y
             if (length? z) > ( pad-size - 1) [
                 z: copy/part z (pad-size - 2)
@@ -320,9 +326,10 @@ pt: print-table: function [
         ]
         tprint ""
     ]
+    
     if output [ return outstring ]
 ]
-
+	
 collect-table-details: function [
 	face [object!]
 ][
@@ -368,7 +375,7 @@ collect-table-details: function [
 			either ct: face/col-type/:i [
 				keep ct
 			][
-				keep "---"
+				either i < 0 [ keep "Not Needed"][keep "---"]
 			]
 		]
 	]
@@ -424,13 +431,62 @@ collect-table-details: function [
 	]
 ]
 
-table-details: function [ face [object!]][
-	either file? face/data [
-		print rejoin [ "Table filename: " mold to-string face/data ]
-	][
-		print "Table loaded from Red Data Block"
+print-table-config: function [ face [object!]][
+	tbl-name: either file? face/data [ mold face/data ][ "<Red data Block>" ]
+	headers-missing: collect [ 
+		foreach col-num face/col-index [
+			if all [ 
+				col-num > 0
+				not face/table-data/1/:col-num
+			][
+				keep col-num 		
+			]
+		]
 	]
-	print-table/name (collect-table-details face) "Table Details"
+	
+	print-table/name (collect-table-details face) tbl-name
+	error-msg: copy ""
+	if headers-missing <> [] [
+		msg-verb: either (length? headers-missing ) > 1 [" are "][ " is " ]
+		append error-msg rejoin [
+			" - Columns " mold headers-missing " of the first row" msg-verb "missing data." newline
+			"^- To fix this, enter the appropriate data into the first row." 
+			newline
+		]
+	]
+	if face/frozen = 0x0 [
+		append error-msg rejoin [
+			" - The Header Row is missing." newline
+			"^- To fix this, right click on the first row and select the Menu: 'Row/Freeze' "
+			newline
+		]
+	]
+	if (length? face/col-type) <> (length? face/col-index) [
+		missing: exclude face/col-index (keys-of face/col-type)
+		remove-each v missing [ v < 0 ]
+		if (length? missing) > 0 [
+			append error-msg rejoin [
+				" - Columns: " mold missing " do NOT have a datatype assigned to them."	newline
+				"^- To fix this, Right click on those columns missing a datatype" newline
+				"^- and select the Menu: 'Column/Type' and then select the appropriate datatype for that column."
+				newline
+			]
+		]
+	]
+	if ((length? face/col-names) / 2) <> (length? face/col-index) [
+		append error-msg rejoin [
+			" - Column Names are missing." newline
+			"^- To fix this, Right Click on any data cell and select the Menu: 'Column/Set Column Names'"
+		]
+	]
+	either error-msg > "" [
+		print rejoin [ newline "======== INCOMPLETE TABLE CONFIGURATION ========" ]
+		print "------------------------------------------------"
+		print "To complete the table configuration do the following:"
+		print error-msg  
+	][
+		print [ newline "======== The Table Configuration is Complete ========" ]
+	]
 ]
 
 between?: func [ val apair ] [
@@ -621,4 +677,33 @@ view-table: function [
 				tbl/actors/refresh-view tbl
 			]
 	]
+]
+
+split-filename: func [
+    {returns a block containing [ <base-name-of-file> <file-extension> ] }
+    filename [file!]
+][
+    return reduce [
+        to-string first split (second (split-path filename)) "."
+        to-string second split (second (split-path filename)) "."
+    ]
+]
+
+expand-range-block: func [blk [block!] /local lo hi][
+    parse blk [set lo pair! skip set hi pair!]
+    expand-pair-range lo hi
+]
+
+expand-pair-range: func [lo [pair!] hi [pair!] /local result x y][
+    result: copy []
+    x: lo/x
+    while [x <= hi/x] [
+        y: lo/y
+        while [y <= hi/y] [
+            append result as-pair x y
+            y: y + 1
+        ]
+        x: x + 1
+    ]
+    result
 ]
