@@ -129,9 +129,9 @@ table-lab-layout: [
 			table1/actors/append-row table1
 		]
 	pad 20x0
-	button-plain1: button-plain "Table Details" font-color 55.176.64.0 bold 
+	button-plain1: button-plain "Table Config." font-color 55.176.64.0 bold 
 		on-click [
-			table-details table1
+			print-table-config table1
 		]
 	clip-btn: button "Show Clipboard" font-color 55.176.64.0 bold 
 		on-click [
