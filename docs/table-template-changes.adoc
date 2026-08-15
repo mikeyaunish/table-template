@@ -1,12 +1,17 @@
-= Changes Between table-template.red Version 0.093 and Version 0.107
+= Changes Between table-template.red Version 0.093 and Version 0.110
 
 == Overview
 
-This document details all changes between the older version: 0.093 (3820 lines) and the newer version: 0.107(6554 lines). The newer version has significantly expanded functionality with approximately 2734 additional lines of code.
+This document details all changes between the older version: 0.093 and the newer version: 0.110. The newer version has significantly expanded functionality.
 
 == Major Additions
-
-=== New Functions
+* Virtual columns with custom rendering
+* Overlay system for enhanced cell functionality
+* Pre-built column types
+* Enhanced file format support
+* Better state management
+* Better data validation
+* Suggested, immutable column naming system to behave more like a database
 
 ==== Video/Display Decor Management
 * `remove-vid-col-decor` - Removes video column decorations
@@ -275,7 +280,6 @@ This document details all changes between the older version: 0.093 (3820 lines) 
 * `-target-vid-object-` - Target VID object for rendering
 * `-vid-code-` - VID code context
 * `table-obj` - Global table object reference
-* `virtual-cols` - Global virtual columns reference
 
 == File Format Changes
 
@@ -326,7 +330,6 @@ Now saves companion `.redbin` file with extended metadata:
 
 == Summary Statistics
 
-* **Total Lines**: 3820 → 6554 (+2734 lines, +71.6% increase)
 * **New Functions**: ~15+ major new functions
 * **Enhanced Functions**: ~30+ functions significantly modified
 * **New File Format**: `.redtbl` binary format added
@@ -340,18 +343,12 @@ When migrating from version 0.93 to the newer version:
 2. **File Opening**: The `open-red-table` function has been renamed to `open-red-type-table`
 3. **New File Format**: Consider using `.redtbl` format for better performance and feature support
 4. **State Files**: State files now include additional fields; old state files may need migration
-5. **Virtual Columns**: New virtual column system requires understanding of VID overlays and code overlays
+5. **Virtual Columns**: New virtual column system now supports VID overlays and Code overlays
 6. **Read-Only Support**: New read-only row/column functionality available
-7. **Defaults**: Default values are now stored separately in binary format
+7. **Defaults**: Default values are now available for all columns
 
 == Conclusion
 
-The newer version represents a significant evolution of the table template system, adding extensive support for:
-* Virtual columns with custom rendering
-* Overlay system for enhanced cell functionality
-* Pre-built column types
-* Enhanced file format support
-* Better state management
-* Improved user experience features
+The newer version represents a significant evolution of the table template system.
 
 The codebase has grown substantially while maintaining backward compatibility for basic table operations.

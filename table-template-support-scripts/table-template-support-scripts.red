@@ -3,6 +3,7 @@ Red [
 ]
 
 multi-split: func [
+	{returns split text using multiple delimiters}
     series [any-string!]
     dlm [block!] "block of delimiters" /local d res i
 ][
@@ -106,49 +107,6 @@ forskip: func ['word [word!] length [integer!] body [block!] /local orig][
     ]
 ]
 
-new-get-widest-column: function [
-	{return length of widest column. V1}	
-	blk [block!] 
-	column-block [block!]
-	/src-text {return the longest string instead of length value}
-][
-    either ((length? column-block) > 1) [ ; Get width of first field which in a block pair would be the label name
-        widest-col: length? to-valid-string (pck: pick (first blk) column-block/1) 
-        sec-col: column-block/2
-    ][
-        widest-col: 0
-        sec-col: column-block/1
-    ]
-    foreach i blk [
-        len: length? txt: to-valid-string ( pick i sec-col )
-        if ( len > widest-col )  [ 
-        	widest-col: len
-        	result: either src-text [ txt ] [ len ] 
-        ]
-    ]
-    return result
-]
-
-old-get-widest-column: function [
-	{return length of widest column. V1}
-	blk [block!] 
-	column-block [block!]
-][
-    either ((length? column-block) > 1) [ ; Get width of first field which in a block pair would be the label name
-        widest-col: length? to-string (pck: pick (first blk) column-block/1) 
-        sec-col: column-block/2
-    ][
-        widest-col: 0
-        sec-col: column-block/1
-    ]
-    foreach i blk [
-        len: length? to-string ( pick i sec-col )
-        if ( len > widest-col )  [ widest-col: len ]
-    ]
-    print [ "get-widest-column #RETURING widest-col =" mold widest-col]
-    return widest-col
-]
-
 get-widest-column: function [
 	{return length of widest column. V3.0}
 	blk [block!] 
@@ -173,12 +131,12 @@ get-widest-column: function [
 ]
 
 pt: print-table: function [ 
-	{prints out a data block in key/value pair. V19}
+	{prints out a data block in key/value pair. V20}
     'table-blk  {series}
     /width column-width [ integer! block!]
     /max-width max-wide [integer!] {Maximum width of any column.Only applies when /width is not used.}
-    /output
-    /name named-table [string!]
+    /output {returns results rather than printing them}
+    /name named-table [string!] {Name of the table displayed before the table itself}
     /columns num-of-cols {defines how many columns contained within each block}
     /column-names col-names-blk [ block! ]
     /col-sequence col-seq [block!]
@@ -265,7 +223,6 @@ pt: print-table: function [
             loop num-of-cols [
                 col-name: ( pick col-names-blk ndx )
                 head-max-wide: pick width-list ndx
-                ;if ((length? col-name ) > max-wide) [
                 if (length? col-name ) > head-max-wide [
                     col-name: copy/part col-name ( head-max-wide - 2)
                     append col-name to-char 187 ;-- truncate data to fit
@@ -297,16 +254,15 @@ pt: print-table: function [
     	x: to-string x
     	replace/all x "^/" " "
         pad-size: (pick width-list ndx)
+        
         tprin [ pad x pad-size ]
     ]
     
     tprint ""
     ndx: 1 
     foreach col-num col-indices [ ;-- print column heading dividers
-        ;pad-size: (pick width-list ndx)
         pad-size: (pick width-list col-num)
         tprin pad/with (copy " ") pad-size #"─"
-        ;ndx: ndx + 1
     ]
     tprint ""
     foreach entry table-block [ ;-- printing table body 
@@ -317,7 +273,7 @@ pt: print-table: function [
         	pick-ndx: (col-num * skip-count)
         	y: pick entry pick-ndx
 			pad-size: (pick width-list col-num)
-            z: copy to-valid-string y
+            z: copy form y
             if (length? z) > ( pad-size - 1) [
                 z: copy/part z (pad-size - 2)
                 append z to-char 187 ;-- truncate data to fit
@@ -326,7 +282,6 @@ pt: print-table: function [
         ]
         tprint ""
     ]
-    
     if output [ return outstring ]
 ]
 	
@@ -444,7 +399,7 @@ print-table-config: function [ face [object!]][
 		]
 	]
 	
-	print-table/name (collect-table-details face) tbl-name
+    print-table/name (collect-table-details face) tbl-name
 	error-msg: copy ""
 	if headers-missing <> [] [
 		msg-verb: either (length? headers-missing ) > 1 [" are "][ " is " ]
@@ -480,12 +435,12 @@ print-table-config: function [ face [object!]][
 		]
 	]
 	either error-msg > "" [
-		print rejoin [ newline "======== INCOMPLETE TABLE CONFIGURATION ========" ]
-		print "------------------------------------------------"
-		print "To complete the table configuration do the following:"
-		print error-msg  
+	    print rejoin [ newline "======== INCOMPLETE TABLE CONFIGURATION ========" ]
+	    print "------------------------------------------------"
+	    print "To complete the table configuration do the following:"
+	    print error-msg  
 	][
-		print [ newline "======== The Table Configuration is Complete ========" ]
+	    print [ newline "======== The Table Configuration is Complete ========" ]
 	]
 ]
 
@@ -519,11 +474,13 @@ source-to-block: function [ source [string!]][
 ]
 
 get-this-text-size: function [txt [string!] /font fnt-name][
+	{returns the size of a single line of text}
 	 l: layout compose [t1: text (mold txt)]
 	 return size-text t1	
 ]
 
 get-text-size: func [txt [string!] /font fnt-name][
+	{returns the size of multi line text string}
 	split-txt: split txt "^/"
 	accum: to-point2D 0x0
 	foreach line split-txt [
@@ -535,6 +492,7 @@ get-text-size: func [txt [string!] /font fnt-name][
 ]
 
 find-in-array-at: func [
+	{return values found in an array block or block of blocks. V2.0}
     blk [any-type!]
     at-loc [integer!] "skip amount into each element of the array"
     find-this
@@ -650,7 +608,7 @@ to-kebab-names: function [
 		foreach item fld-blk [ ;-- ie: [ 1 "id" ]
 			s: trim lowercase item/2
 			remove-punctuation s
-    		printable-plus-space: charset [#"!" - #"~"]  
+    	    printable-plus-space: charset [#"!" - #"~"]  
     		parse s [any [some printable-plus-space | change skip "-"]]			
 			keep s
 		]
@@ -659,22 +617,24 @@ to-kebab-names: function [
 
 view-table: function [ 
 	table-data [block!]
+	/no-header
 ][
 	sizes: collect [
 		repeat col-num (length? table-data/1) [ 
 			keep get-this-text-size get-widest-column/return-string table-data reduce [ col-num ]
 		]			
 	]
-	view [
+	opt-blk: either no-header [ [] ] [ [config: [frozen-rows:[1]]]  ]
+	view compose/deep [
 		title "view-table"
-		tbl: table 700x200 data table-data 
-			options [ config: [  frozen-rows: [ 1 ] ] ]
+		vt-tbl: table 700x200 data table-data 
+			options [ (opt-blk) ]
 			b: box 0x0 
 			on-created [
 				repeat ndx (length? table-data/1)[
-					tbl/sizes/x/:ndx: ((to-integer sizes/:ndx/x) + 5 )
+					vt-tbl/sizes/x/:ndx: to-integer sizes/:ndx/x + 5 
 				]
-				tbl/actors/refresh-view tbl
+				vt-tbl/actors/refresh-view vt-tbl
 			]
 	]
 ]
@@ -691,7 +651,7 @@ split-filename: func [
 
 expand-range-block: func [blk [block!] /local lo hi][
     parse blk [set lo pair! skip set hi pair!]
-    expand-pair-range lo hi
+    expand-pair-range (min lo hi) (max lo hi)
 ]
 
 expand-pair-range: func [lo [pair!] hi [pair!] /local result x y][

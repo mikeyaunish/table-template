@@ -2,9 +2,9 @@ Red [
 	title: "table-template"
 	author: {@toomasv  custom fork by: @mikeyaunish}
 	file: %table-template.red
-	git-url: https://github.com/mikeyaunish/table-template
-	version: 0.122
-	date: 5-JUN-2026
+	url: https://github.com/mikeyaunish/table-template
+	version: 0.123
+	date: 14-JUN-2026
 ]
 #include %table-template-support-scripts/style.red
 #include %table-template-support-scripts/re.red
@@ -19,7 +19,7 @@ tbl: [
 	size: 317x217
 	color: silver
 	flags: [scrollable all-over]
-	version: 0.122
+	version: 0.123
 	identifier: "table-template"
 	scroller: 			make map! 1
 	index: 				make map! 2
@@ -289,8 +289,8 @@ tbl: [
 			"Paste"     paste-selected
 			;"Transpose" transpose
 			"Color" [
-				"Set Color" color-selected
-				"Remove Color" remove-color-selected
+				"Set Color" 	color-selected
+				"Remove Color"  remove-color-selected
 			]
 			"Set Name"  name-selected
 		]
@@ -485,6 +485,20 @@ tbl: [
 			]
 			return accum
 		]
+
+
+		get-col-label: function [ face [object!] col [integer!] ][
+			either fnd: find face/col-names col [
+				return first back fnd
+			][
+				either (face/frozen-rows = [1])[
+					lbl: copy face/table-data/1/:col
+					return replace/all lbl "^/" " "
+				][
+					return none
+				]
+			]
+		]		
 		
 		set-last-page: function [ face [object!] ][ ;-- get size of last page minus frozen rows
 			pg-size: face/size - (to-pair reduce [ 0 (get-header-height face) ]) - face/scroller-width
@@ -2730,6 +2744,9 @@ tbl: [
 					all [t: face/col-type/:data-x t = 'do][
 						text: form either face/table-data/:data-y/:data-x [do face/table-data/:data-y/:data-x][face/dummy]
 					]
+					all [t: face/col-type/:data-x t = 'logic!][
+						text: form face/table-data/:data-y/:data-x 
+					]
 					true [
 						text: form case [
 							data-x = 0 [either face/sheet? [index-y][data-y]]
@@ -2892,11 +2909,17 @@ tbl: [
 			face [object!]	
 			col-id [integer! string!]
 			/only {returns row indices only}
+			/header {include the header row}
 		][
+			col-id
 			if not checked-rows: get-checked-indices face col-id [ exit ]
 			checked-rows: sort checked-rows
 			if only [ return checked-rows ]
-			results: copy []
+			results: either header [
+				copy reduce [ (get-row face 1) ]
+			][
+				copy []
+			]
 			foreach row checked-rows [
 				append/only results get-row face row
 			]
@@ -3898,15 +3921,52 @@ tbl: [
 		]
 		
 
-		set-col-type: function [face [object!] event [event! integer!] /only typ [word!]][
+		set-col-type: function [
+			face [object!] 
+			event [event! integer!] 
+			/only typ [word!]
+			/recurse 
+		][
+			
+			type: either event? event [event/picked][typ]
 			col: either event? event [get-col-number face event][event]
 			if col < 0 [
 				status-msg "Virtual Columns can NOT have their datatype set."
 				exit 
 			]
 			if not all [not only col = 0][
-				old-type: face/col-type/:col
-				face/col-type/:col: type: either event? event [event/picked][typ]
+				if all [ 
+					((length? face/cells-selected) > 1) 
+					not recurse
+				][
+					exp-rng: either (face/cells-selected/2 = '-) [
+						expand-range-block face/cells-selected
+					][
+						face/cells-selected
+					]
+					col-set: unique collect [ 
+						foreach i exp-rng [ 
+							keep get-data-col face i/x 
+						]
+					]
+					name-set: collect [foreach c col-set [ keep get-col-label face c ]]
+					if find name-set none! [
+						request-message "Some of the columns selected do not have any names defined. You can fix this either by freezing the top row or by using the Menu: 'Column/Set Column Names'. Ideally you should do both to complete the table configuration."
+						exit
+					]
+					msg: rejoin [ "You have selected more than one column. Are you sure you want to set columns " 
+						mold name-set " to the " type " datatype?"
+					]
+					if request-yes-no msg [
+						foreach col col-set [
+							set-col-type/only/recurse face col type 
+						]
+					]
+				]				
+
+				;face/col-type/:col: type: either event? event [event/picked][typ]
+				face/col-type/:col: type
+				
 				if not to-valid-logic 'data [
 					data: face/table-data 
 				]
@@ -4134,7 +4194,7 @@ tbl: [
 		]
 		
 	    print-table-data: func [ face [object!]][
-	    	col-ndx: face/col-index
+	    	col-ndx: copy face/col-index
 	    	remove-each i col-ndx [ i < 0 ]
 		    print-table/columns/column-names/name/col-sequence (skip face/table-data 1)  (length? face/table-data/1) face/table-data/1 face/name col-ndx
 		]
@@ -6260,7 +6320,7 @@ tbl: [
 				;force-state     	[use-state/force face]
 				clear-color     	[clear face/colors fill face]
 				forget-names    	[forget-names face none]
-				print-table-config   [print-table-config face ]
+			    print-table-config   [print-table-config face ]
 			    print-data			[print-table-data face ]
 				refresh-view		[refresh-view face ]
 			    print-code-overlays [print-code-overlays face ]
@@ -6647,14 +6707,16 @@ tbl: [
 		open-table: func [
 			face [object!]
 			/with state [file! block!] ;TBD
+			/path file-path [file!]
 			/local file opts bin-data
 		][
 			
+			f-path: either path [ file-path ][ system/options/path ]
 			either with [ 
 				file: state 
 			][
 				file: request-file/title/file/filter 
-					"Open file" rejoin [ system/options/path %data/ ] ["Red Table" "*.redtbl" "Red File" "*.red" "CSV" "*.csv" "All Files" "*.*"]
+					"Open file" f-path ["Red Table" "*.redtbl" "Red File" "*.red" "CSV" "*.csv" "All Files" "*.*"]
 			]
 					
 			if file [
@@ -6671,7 +6733,6 @@ tbl: [
 					]
 					%.redtbl = suffix? file [
 						bin-data: load/as file 'redbin 
-						;open-redtbl face bin-data 
 						open-red-type-table/redtbl face bin-data 
 					]						
 					true [ 
@@ -6866,8 +6927,9 @@ tbl: [
 			file
 		]
 
-		save-table-as: func [face [object!] /local file][
-			if file: request-file/save/title/file/filter "Save file as" system/options/path 
+		save-table-as: func [face [object!] /path file-path [file!] /local file][
+			f-path: either path [ file-path ][ system/options/path ]
+			if file: request-file/save/title/file/filter "Save file as" f-path
 				["Red Table" "*.redtbl" "Red File" "*.red" "CSV" "*.csv" "All Files" "*.*"] [
 				face/data: file
 				save-table face
